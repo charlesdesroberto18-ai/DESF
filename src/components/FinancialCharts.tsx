@@ -77,6 +77,65 @@ export default function FinancialCharts({
   const totalMetaRestante = savingGoals.reduce((sum, g) => sum + Math.max(0, g.target - g.current), 0);
   const percentMetaConcluida = totalMetaTarget > 0 ? Math.round((caixinhasTotal / totalMetaTarget) * 100) : 0;
 
+  // Percentages relative to total income (for allocation stack)
+  const percentFixedOfIn = totalIn > 0 ? (fixedTotal / totalIn) * 100 : 0;
+  const percentVariableOfIn = totalIn > 0 ? (variableTotal / totalIn) * 100 : 0;
+  const percentSavingsOfIn = totalIn > 0 ? (caixinhasTotal / totalIn) * 100 : 0;
+  const percentLeftoverOfIn = totalIn > 0 ? (balance / totalIn) * 100 : 0;
+
+  // Group variable expenses by category
+  const categoriesMap: Record<string, { value: number; count: number }> = {};
+  variableExpenses.forEach(exp => {
+    const cat = exp.category || 'Outros';
+    if (!categoriesMap[cat]) {
+      categoriesMap[cat] = { value: 0, count: 0 };
+    }
+    categoriesMap[cat].value += exp.value;
+    categoriesMap[cat].count += 1;
+  });
+
+  const categoriesData = Object.entries(categoriesMap)
+    .map(([name, data]) => ({
+      name,
+      value: data.value,
+      count: data.count,
+      percentage: variableTotal > 0 ? (data.value / variableTotal) * 100 : 0
+    }))
+    .sort((a, b) => b.value - a.value);
+
+  const categoryColors: Record<string, string> = {
+    'Alimentação': 'bg-amber-500',
+    'Transporte / Gasolina': 'bg-blue-500',
+    'Lazer / Delivery': 'bg-rose-500',
+    'Saúde / Farmácia': 'bg-emerald-500',
+    'Roupas / Compras': 'bg-purple-500',
+    'Educação / Cursos': 'bg-teal-500',
+    'Assinaturas / Serviços': 'bg-indigo-500',
+    'Outros': 'bg-slate-400'
+  };
+
+  const categoryTextColors: Record<string, string> = {
+    'Alimentação': 'text-amber-500',
+    'Transporte / Gasolina': 'text-blue-500',
+    'Lazer / Delivery': 'text-rose-500',
+    'Saúde / Farmácia': 'text-emerald-500',
+    'Roupas / Compras': 'text-purple-500',
+    'Educação / Cursos': 'text-teal-500',
+    'Assinaturas / Serviços': 'text-indigo-500',
+    'Outros': 'text-slate-400'
+  };
+
+  const categoryIcons: Record<string, any> = {
+    'Alimentação': ShoppingCart,
+    'Transporte / Gasolina': Wallet,
+    'Lazer / Delivery': Target,
+    'Saúde / Farmácia': AlertCircle,
+    'Roupas / Compras': ShoppingCart,
+    'Educação / Cursos': Percent,
+    'Assinaturas / Serviços': Percent,
+    'Outros': HelpCircle
+  };
+
   // Active Month Calculations for Calendar
   const monthIndex = MONTH_NAMES.indexOf(currentMonthName.toUpperCase());
   const monthNumber = monthIndex !== -1 ? monthIndex + 1 : 7;
@@ -420,6 +479,183 @@ export default function FinancialCharts({
             <span className="text-[9px] text-indigo-500 font-medium mt-1 block">Progresso total</span>
           </div>
         </div>
+      </div>
+
+      {/* SEÇÃO DE ANÁLISE DE FLUXO E DISTRIBUIÇÃO */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5" id="visual_analysis_section">
+        
+        {/* Left Card: Dynamic Cash Flow Stack */}
+        <div className="lg:col-span-7 bg-white rounded-2xl p-6 border border-slate-100 shadow-sm space-y-5 flex flex-col justify-between" id="cashflow_flow_analysis">
+          <div className="space-y-0.5">
+            <h3 className="font-display font-bold text-slate-800 text-base flex items-center gap-2">
+              <TrendingUp className="w-5 h-5 text-emerald-500" />
+              Alocação da Receita Total
+            </h3>
+            <p className="text-xs text-slate-400">Veja proporcionalmente para onde estão indo seus ganhos deste mês.</p>
+          </div>
+
+          {/* Graphical Multi-Segment Stack Bar */}
+          <div className="space-y-4">
+            <div className="h-6 w-full bg-slate-100 rounded-2xl overflow-hidden flex p-0.5 animate-pulse-once" title="Distribuição do Fluxo">
+              {percentFixedOfIn > 0 && (
+                <div
+                  style={{ width: `${percentFixedOfIn}%` }}
+                  className="bg-rose-500 h-full transition-all duration-500 ease-out first:rounded-l-xl last:rounded-r-xl"
+                  title={`Contas Fixas: R$ ${fixedTotal.toFixed(2)} (${percentFixedOfIn.toFixed(1)}%)`}
+                />
+              )}
+              {percentVariableOfIn > 0 && (
+                <div
+                  style={{ width: `${percentVariableOfIn}%` }}
+                  className="bg-indigo-500 h-full transition-all duration-500 ease-out first:rounded-l-xl last:rounded-r-xl"
+                  title={`Gastos Variáveis: R$ ${variableTotal.toFixed(2)} (${percentVariableOfIn.toFixed(1)}%)`}
+                />
+              )}
+              {percentSavingsOfIn > 0 && (
+                <div
+                  style={{ width: `${percentSavingsOfIn}%` }}
+                  className="bg-teal-500 h-full transition-all duration-500 ease-out first:rounded-l-xl last:rounded-r-xl"
+                  title={`Caixinhas: R$ ${caixinhasTotal.toFixed(2)} (${percentSavingsOfIn.toFixed(1)}%)`}
+                />
+              )}
+              {balance > 0 && (
+                <div
+                  style={{ width: `${percentLeftoverOfIn}%` }}
+                  className="bg-emerald-500 h-full transition-all duration-500 ease-out first:rounded-l-xl last:rounded-r-xl"
+                  title={`Sobra Líquida: R$ ${balance.toFixed(2)} (${percentLeftoverOfIn.toFixed(1)}%)`}
+                />
+              )}
+            </div>
+
+            {/* If zero revenue */}
+            {totalIn === 0 && (
+              <div className="text-center py-2 text-xs text-slate-400 italic bg-slate-50 rounded-xl border border-dashed border-slate-100">
+                Nenhuma receita registrada ainda. Adicione uma para ver o gráfico.
+              </div>
+            )}
+
+            {/* If deficit */}
+            {balance < 0 && (
+              <div className="bg-rose-50 border border-rose-100/60 rounded-xl p-3 text-xs text-rose-700 flex items-center gap-2 font-medium">
+                <AlertCircle className="w-4 h-4 shrink-0 text-rose-500 animate-bounce" />
+                <span>Suas despesas totais superaram suas receitas em R$ {Math.abs(balance).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}.</span>
+              </div>
+            )}
+          </div>
+
+          {/* Breakdown detailed list */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1" id="cashflow_legends_grid">
+            <div className="p-3 bg-rose-50/30 border border-rose-100/30 rounded-xl flex items-center justify-between">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="w-3 h-3 rounded-full bg-rose-500 shrink-0" />
+                <span className="text-xs font-bold text-slate-600 truncate">Contas Fixas</span>
+              </div>
+              <div className="text-right">
+                <span className="text-xs font-bold font-mono text-slate-800 block">R$ {fixedTotal.toLocaleString('pt-BR')}</span>
+                <span className="text-[10px] text-slate-400 block">{percentFixedOfIn.toFixed(1)}% da receita</span>
+              </div>
+            </div>
+
+            <div className="p-3 bg-indigo-50/30 border border-indigo-100/30 rounded-xl flex items-center justify-between">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="w-3 h-3 rounded-full bg-indigo-500 shrink-0" />
+                <span className="text-xs font-bold text-slate-600 truncate">Gastos Variáveis</span>
+              </div>
+              <div className="text-right">
+                <span className="text-xs font-bold font-mono text-slate-800 block">R$ {variableTotal.toLocaleString('pt-BR')}</span>
+                <span className="text-[10px] text-slate-400 block">{percentVariableOfIn.toFixed(1)}% da receita</span>
+              </div>
+            </div>
+
+            <div className="p-3 bg-teal-50/30 border border-teal-100/30 rounded-xl flex items-center justify-between">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="w-3 h-3 rounded-full bg-teal-500 shrink-0" />
+                <span className="text-xs font-bold text-slate-600 truncate">Caixinhas (Poupar)</span>
+              </div>
+              <div className="text-right">
+                <span className="text-xs font-bold font-mono text-slate-800 block">R$ {caixinhasTotal.toLocaleString('pt-BR')}</span>
+                <span className="text-[10px] text-slate-400 block">{percentSavingsOfIn.toFixed(1)}% da receita</span>
+              </div>
+            </div>
+
+            <div className={`p-3 border rounded-xl flex items-center justify-between ${
+              balance >= 0 ? 'bg-emerald-50/30 border-emerald-100/30' : 'bg-rose-50/40 border-rose-100/40'
+            }`}>
+              <div className="flex items-center gap-2 min-w-0">
+                <span className={`w-3 h-3 rounded-full shrink-0 ${balance >= 0 ? 'bg-emerald-500' : 'bg-rose-600'}`} />
+                <span className="text-xs font-bold text-slate-600 truncate">Sobra Real</span>
+              </div>
+              <div className="text-right">
+                <span className={`text-xs font-bold font-mono block ${balance >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
+                  R$ {balance.toLocaleString('pt-BR')}
+                </span>
+                <span className="text-[10px] text-slate-400 block">
+                  {balance >= 0 ? `${percentLeftoverOfIn.toFixed(1)}% livre` : 'Saldo Negativo'}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Right Card: Expenses Category Breakdown */}
+        <div className="lg:col-span-5 bg-white rounded-2xl p-6 border border-slate-100 shadow-sm flex flex-col justify-between" id="category_breakdown_analysis">
+          <div className="space-y-0.5">
+            <h3 className="font-display font-bold text-slate-800 text-base flex items-center gap-2">
+              <ShoppingCart className="w-5 h-5 text-indigo-500" />
+              Gastos Variáveis por Categoria
+            </h3>
+            <p className="text-xs text-slate-400">Classificação das suas compras do dia por relevância.</p>
+          </div>
+
+          <div className="flex-1 mt-4 space-y-3.5 max-h-[220px] overflow-y-auto pr-1">
+            {categoriesData.length > 0 ? (
+              categoriesData.map((cat) => {
+                const barColor = categoryColors[cat.name] || 'bg-slate-400';
+                const textColor = categoryTextColors[cat.name] || 'text-slate-500';
+                const CatIcon = categoryIcons[cat.name] || HelpCircle;
+
+                return (
+                  <div key={cat.name} className="space-y-1">
+                    <div className="flex items-center justify-between text-xs">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <div className={`p-1 rounded-lg ${barColor.replace('bg-', 'bg-opacity-10 bg-')} ${textColor}`}>
+                          <CatIcon className="w-3.5 h-3.5" />
+                        </div>
+                        <span className="font-bold text-slate-700 truncate">{cat.name}</span>
+                        <span className="text-[9px] text-slate-400 font-bold bg-slate-50 px-1.5 py-0.5 rounded border border-slate-100 shrink-0">
+                          {cat.count} {cat.count === 1 ? 'item' : 'itens'}
+                        </span>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <span className="font-bold font-mono text-slate-800">
+                          R$ {cat.value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                        </span>
+                        <span className="text-[10px] text-slate-400 ml-1.5 font-semibold">({cat.percentage.toFixed(0)}%)</span>
+                      </div>
+                    </div>
+                    
+                    {/* Visual Progress Line */}
+                    <div className="h-1.5 w-full bg-slate-50 rounded-full overflow-hidden">
+                      <div
+                        style={{ width: `${cat.percentage}%` }}
+                        className={`h-full rounded-full transition-all duration-500 ease-out ${barColor}`}
+                      />
+                    </div>
+                  </div>
+                );
+              })
+            ) : (
+              <div className="h-full flex flex-col items-center justify-center text-center py-6 space-y-2 border border-dashed border-slate-100 rounded-2xl bg-slate-50/50">
+                <ShoppingCart className="w-8 h-8 text-slate-300" />
+                <div className="space-y-0.5">
+                  <p className="text-xs font-bold text-slate-500">Nenhum gasto variável lançado</p>
+                  <p className="text-[10px] text-slate-400 max-w-[200px] mx-auto">Clique em qualquer dia do calendário abaixo para registrar despesas diárias.</p>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
       </div>
 
       {/* NOVO CALENDÁRIO MENSAL INTERATIVO */}
