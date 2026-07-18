@@ -1,16 +1,17 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Plus, Check, CreditCard, Sparkles, AlertCircle, Trash2, Edit3, Copy, X } from 'lucide-react';
+import { Plus, Check, CreditCard, Sparkles, AlertCircle, Trash2, Edit3, Copy, X, Calendar } from 'lucide-react';
 import { FixedExpense } from '../types';
 
 interface FixedExpensesTabProps {
   fixedExpenses: FixedExpense[];
-  onUpdateFixedExpense: (id: string, name: string, value: number) => void;
+  onUpdateFixedExpense: (id: string, name: string, value: number, dueDate?: string) => void;
   onToggleFixedExpensePaid: (id: string) => void;
-  onAddFixedExpense: (name: string, value: number) => void;
+  onAddFixedExpense: (name: string, value: number, dueDate?: string) => void;
   onDeleteFixedExpense: (id: string) => void;
   onDuplicateFixedExpenseToNextMonth: (id: string) => void;
   currentMonthName: string;
+  currentYear: number;
 }
 
 export default function FixedExpensesTab({
@@ -20,10 +21,12 @@ export default function FixedExpensesTab({
   onAddFixedExpense,
   onDeleteFixedExpense,
   onDuplicateFixedExpenseToNextMonth,
-  currentMonthName
+  currentMonthName,
+  currentYear
 }: FixedExpensesTabProps) {
   const [newName, setNewName] = React.useState('');
   const [newValue, setNewValue] = React.useState('');
+  const [dueDay, setDueDay] = React.useState('');
   const [showAddForm, setShowAddForm] = React.useState(false);
   const [validationError, setValidationError] = React.useState('');
 
@@ -31,6 +34,7 @@ export default function FixedExpensesTab({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
   const [editValue, setEditValue] = useState('');
+  const [editDueDay, setEditDueDay] = useState('');
 
   // Duplication notification toast
   const [duplicateMessage, setDuplicateMessage] = useState('');
@@ -39,6 +43,14 @@ export default function FixedExpensesTab({
   const totalPaid = fixedExpenses.filter(e => e.isPaid).reduce((sum, e) => sum + e.value, 0);
   const totalUnpaid = totalFixed - totalPaid;
   const percentPaid = totalFixed > 0 ? Math.round((totalPaid / totalFixed) * 100) : 0;
+
+  const MONTH_NAMES = [
+    'JANEIRO', 'FEVEREIRO', 'MARÇO', 'ABRIL', 'MAIO', 'JUNHO',
+    'JULHO', 'AGOSTO', 'SETEMBRO', 'OUTUBRO', 'NOVEMBRO', 'DEZEMBRO'
+  ];
+  const monthIdx = MONTH_NAMES.indexOf(currentMonthName.toUpperCase());
+  const monthNumber = monthIdx !== -1 ? monthIdx + 1 : 1;
+  const year = currentYear || 2026;
 
   const handleAddSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -51,9 +63,11 @@ export default function FixedExpensesTab({
       setValidationError('Por favor, informe um valor válido maior que zero.');
       return;
     }
-    onAddFixedExpense(newName.trim(), val);
+    const dueDateStr = dueDay ? `${year}-${String(monthNumber).padStart(2, '0')}-${String(dueDay).padStart(2, '0')}` : undefined;
+    onAddFixedExpense(newName.trim(), val, dueDateStr);
     setNewName('');
     setNewValue('');
+    setDueDay('');
     setShowAddForm(false);
     setValidationError('');
   };
@@ -62,6 +76,16 @@ export default function FixedExpensesTab({
     setEditingId(exp.id);
     setEditName(exp.name);
     setEditValue(exp.value.toString());
+    if (exp.dueDate) {
+      const parts = exp.dueDate.split('-');
+      if (parts.length === 3) {
+        setEditDueDay(parseInt(parts[2]).toString());
+      } else {
+        setEditDueDay('');
+      }
+    } else {
+      setEditDueDay('');
+    }
   };
 
   const handleSaveEdit = (id: string) => {
@@ -69,7 +93,8 @@ export default function FixedExpensesTab({
     const val = parseFloat(editValue);
     if (isNaN(val) || val < 0) return;
 
-    onUpdateFixedExpense(id, editName.trim(), val);
+    const dueDateStr = editDueDay ? `${year}-${String(monthNumber).padStart(2, '0')}-${String(editDueDay).padStart(2, '0')}` : undefined;
+    onUpdateFixedExpense(id, editName.trim(), val, dueDateStr);
     setEditingId(null);
   };
 
@@ -212,12 +237,34 @@ export default function FixedExpensesTab({
                               placeholder="0,00"
                             />
                           </div>
+                          <select
+                            value={editDueDay}
+                            onChange={(e) => setEditDueDay(e.target.value)}
+                            className="bg-white border border-slate-200 focus:border-rose-500 rounded-lg text-xs font-semibold p-1.5 outline-none text-slate-700 w-28 shrink-0 cursor-pointer"
+                          >
+                            <option value="">Sem venc.</option>
+                            {Array.from({ length: 31 }, (_, i) => i + 1).map((day) => (
+                              <option key={day} value={day}>Dia {day}</option>
+                            ))}
+                          </select>
                         </div>
                       ) : (
                         <div>
-                          <span className={`text-sm font-semibold transition-colors block ${exp.isPaid ? 'text-slate-500 line-through' : 'text-slate-800'}`}>
-                            {exp.name}
-                          </span>
+                          <div className="flex items-center gap-2">
+                            <span className={`text-sm font-semibold transition-colors block ${exp.isPaid ? 'text-slate-500 line-through' : 'text-slate-800'}`}>
+                              {exp.name}
+                            </span>
+                            {exp.dueDate && (
+                              <span className={`inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded border ${
+                                exp.isPaid 
+                                  ? 'bg-slate-100 text-slate-400 border-slate-200' 
+                                  : 'bg-rose-50 text-rose-600 border-rose-100/80'
+                              }`}>
+                                <Calendar className="w-2.5 h-2.5" />
+                                Vencimento: Dia {exp.dueDate.split('-')[2]}
+                              </span>
+                            )}
+                          </div>
                           <span className="text-[10px] text-slate-400 font-medium font-mono">
                             Fixo mensal — {exp.isPaid ? '✓ Pago' : '✗ Pendente'}
                           </span>
@@ -325,6 +372,20 @@ export default function FixedExpensesTab({
                   className="w-full bg-slate-50 border border-slate-200 focus:border-rose-500 focus:ring-1 focus:ring-rose-500 rounded-lg text-xs py-2 pl-8 pr-3 font-semibold outline-none text-slate-700"
                 />
               </div>
+            </div>
+
+            <div>
+              <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">Dia do Vencimento (Opcional)</label>
+              <select
+                value={dueDay}
+                onChange={(e) => setDueDay(e.target.value)}
+                className="w-full bg-slate-50 border border-slate-200 focus:border-rose-500 focus:ring-1 focus:ring-rose-500 rounded-lg text-xs py-2 px-3 font-semibold outline-none text-slate-700 cursor-pointer"
+              >
+                <option value="">Sem data de vencimento</option>
+                {Array.from({ length: 31 }, (_, i) => i + 1).map((day) => (
+                  <option key={day} value={day}>Dia {day}</option>
+                ))}
+              </select>
             </div>
 
             {validationError && (

@@ -12,6 +12,7 @@ export interface FixedExpense {
   name: string;
   value: number;
   isPaid: boolean;
+  dueDate?: string; // Format: "YYYY-MM-DD"
 }
 
 export interface SavingGoal {

@@ -39,6 +39,8 @@ interface FinancialChartsProps {
   onAddVariableExpense: (description: string, category: string, value: number, date: string, isPaid: boolean) => void;
   onDeleteVariableExpense: (id: string) => void;
   onUpdateObservations: (date: string, text: string) => void;
+  onToggleFixedExpensePaid?: (id: string) => void;
+  onToggleVariableExpensePaid?: (id: string) => void;
 }
 
 const MONTH_NAMES = [
@@ -62,7 +64,9 @@ export default function FinancialCharts({
   onDeleteIncome,
   onAddVariableExpense,
   onDeleteVariableExpense,
-  onUpdateObservations
+  onUpdateObservations,
+  onToggleFixedExpensePaid,
+  onToggleVariableExpensePaid
 }: FinancialChartsProps) {
   const despesasTotais = fixedTotal + variableTotal;
   const totalOutWithCaixinhas = despesasTotais + caixinhasTotal;
@@ -167,6 +171,34 @@ export default function FinancialCharts({
     setTimeout(() => setSaveSuccess(false), 2000);
   };
 
+  // Construct today's date string in YYYY-MM-DD format
+  const todayObj = new Date();
+  const todayStr = `${todayObj.getFullYear()}-${String(todayObj.getMonth() + 1).padStart(2, '0')}-${String(todayObj.getDate()).padStart(2, '0')}`;
+
+  // Gather pending and overdue bills
+  const pendingBills = [
+    ...fixedExpenses
+      .filter(fe => !fe.isPaid && fe.dueDate)
+      .map(fe => ({
+        id: fe.id,
+        name: fe.name,
+        value: fe.value,
+        type: 'fixed' as const,
+        dueDate: fe.dueDate!,
+        isOverdue: fe.dueDate! < todayStr,
+      })),
+    ...variableExpenses
+      .filter(ve => !ve.isPaid && ve.date)
+      .map(ve => ({
+        id: ve.id,
+        name: ve.description,
+        value: ve.value,
+        type: 'variable' as const,
+        dueDate: ve.date,
+        isOverdue: ve.date < todayStr,
+      }))
+  ].sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+
   // Build grid items
   const calendarCells = [];
   // Add empty spaces for previous month's days
@@ -179,11 +211,16 @@ export default function FinancialCharts({
     const dayIncs = incomes.filter(inc => inc.date === dateString);
     const dayVars = variableExpenses.filter(ve => ve.date === dateString);
     
+    // Check if there are unpaid fixed expenses due on this date
+    const hasUnpaidFixed = fixedExpenses.some(fe => fe.dueDate === dateString && !fe.isPaid);
+    // Check if there are unpaid variable expenses due on this date
+    const hasUnpaidVariable = dayVars.some(ve => !ve.isPaid);
+    const hasUnpaidBills = hasUnpaidFixed || hasUnpaidVariable;
+    
     const incSum = dayIncs.reduce((sum, item) => sum + item.value, 0);
     const expSum = dayVars.reduce((sum, item) => sum + item.value, 0);
     const dayObs = observations[dateString] || '';
 
-    const todayObj = new Date();
     const isToday = todayObj.getFullYear() === year && (todayObj.getMonth() + 1) === monthNumber && todayObj.getDate() === d;
 
     calendarCells.push({
@@ -194,6 +231,7 @@ export default function FinancialCharts({
       incomesSum: incSum,
       expensesSum: expSum,
       hasObservation: dayObs.trim().length > 0,
+      hasUnpaidBills,
       key: `day-${d}`
     });
   }
@@ -201,6 +239,88 @@ export default function FinancialCharts({
   return (
     <div className="space-y-6" id="dashboard_tab_panel">
       
+      {/* Alertas de Prazos a Vencer */}
+      <div className="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm space-y-4" id="due_date_alerts_panel">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="p-2 bg-rose-50 text-rose-600 rounded-xl">
+              <AlertCircle className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="font-display font-bold text-slate-800 text-base">
+                Alertas de Prazos a Vencer
+              </h3>
+              <p className="text-xs text-slate-400">Contas fixas e despesas pendentes deste mês com vencimento.</p>
+            </div>
+          </div>
+          {pendingBills.length > 0 && (
+            <span className="text-xs font-bold bg-rose-50 text-rose-600 px-3 py-1 rounded-full font-mono border border-rose-100">
+              {pendingBills.length} pendentes • R$ {pendingBills.reduce((sum, b) => sum + b.value, 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+            </span>
+          )}
+        </div>
+
+        {pendingBills.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {pendingBills.map((bill) => (
+              <div
+                key={`${bill.type}-${bill.id}`}
+                className={`p-3.5 rounded-xl border flex items-center justify-between gap-3 transition-all ${
+                  bill.isOverdue
+                    ? 'bg-rose-50/40 border-rose-100 hover:border-rose-200'
+                    : 'bg-amber-50/20 border-amber-100 hover:border-amber-200'
+                }`}
+              >
+                <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                  {/* Quick toggle payment button */}
+                  <button
+                    onClick={() => {
+                      if (bill.type === 'fixed' && onToggleFixedExpensePaid) {
+                        onToggleFixedExpensePaid(bill.id);
+                      } else if (bill.type === 'variable' && onToggleVariableExpensePaid) {
+                        onToggleVariableExpensePaid(bill.id);
+                      }
+                    }}
+                    className="w-5 h-5 rounded-full border border-slate-300 bg-white hover:border-rose-400 text-transparent flex items-center justify-center shrink-0 transition-colors cursor-pointer group"
+                    title="Marcar como pago"
+                  >
+                    <Check className="w-3.5 h-3.5 stroke-[3.5] text-slate-400 group-hover:text-rose-500" />
+                  </button>
+                  <div className="min-w-0">
+                    <span className="text-xs font-bold block truncate text-slate-800">
+                      {bill.name}
+                    </span>
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      <span className={`text-[9px] font-bold px-1 py-0.5 rounded ${
+                        bill.isOverdue ? 'bg-rose-100 text-rose-700' : 'bg-amber-100 text-amber-700'
+                      }`}>
+                        {bill.isOverdue ? 'Atrasada!' : 'A vencer'}
+                      </span>
+                      <span className="text-[10px] text-slate-400 font-mono">
+                        Dia {bill.dueDate.split('-')[2]}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                <div className="text-right shrink-0">
+                  <span className="text-xs font-bold font-mono text-slate-700 block">
+                    R$ {bill.value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                  </span>
+                  <span className="text-[9px] text-slate-400 block uppercase font-bold">
+                    {bill.type === 'fixed' ? 'Fixa' : 'Variável'}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="bg-emerald-50/50 border border-emerald-100/60 rounded-xl p-4 text-center text-xs font-semibold text-emerald-800 flex items-center justify-center gap-2">
+            <Check className="w-4 h-4 bg-emerald-500 text-white p-0.5 rounded-full" />
+            <span>Parabéns! Nenhuma conta com vencimento pendente para o mês de {currentMonthName.toLowerCase()}.</span>
+          </div>
+        )}
+      </div>
+
       {/* 6 Indicadores Financeiros do Dashboard */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3.5" id="indicators_grid">
         {/* 1. Receita Total */}
@@ -352,17 +472,30 @@ export default function FinancialCharts({
                   }`}
                 >
                   <div className="flex items-center justify-between">
-                    <span className={`text-xs font-bold ${
-                      cell.isToday 
-                        ? 'bg-teal-600 text-white w-5 h-5 rounded-full flex items-center justify-center' 
-                        : 'text-slate-700 group-hover:text-slate-900'
-                    }`}>
-                      {cell.day}
-                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <span className={`text-xs font-bold ${
+                        cell.isToday 
+                          ? 'bg-teal-600 text-white w-5 h-5 rounded-full flex items-center justify-center' 
+                          : 'text-slate-700 group-hover:text-slate-900'
+                      }`}>
+                        {cell.day}
+                      </span>
+                      {cell.hasUnpaidBills && (
+                        <span className="flex h-1.5 w-1.5 relative" title="Contas pendentes!">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-rose-500"></span>
+                        </span>
+                      )}
+                    </div>
 
-                    {hasObs && (
-                      <StickyNote className="w-3.5 h-3.5 text-amber-500" title="Possui observação" />
-                    )}
+                    <div className="flex items-center gap-1">
+                      {cell.hasUnpaidBills && (
+                        <AlertCircle className="w-3.5 h-3.5 text-rose-500 stroke-[2.5]" title="Contas vencendo ou pendentes" />
+                      )}
+                      {hasObs && (
+                        <StickyNote className="w-3.5 h-3.5 text-amber-500" title="Possui observação" />
+                      )}
+                    </div>
                   </div>
 
                   {/* Compact indicators area */}

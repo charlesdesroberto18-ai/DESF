@@ -420,10 +420,10 @@ export default function App() {
   };
 
   // FIXED EXPENSES
-  const handleUpdateFixedExpense = (id: string, name: string, value: number) => {
+  const handleUpdateFixedExpense = (id: string, name: string, value: number, dueDate?: string) => {
     updateBudget(prev => ({
       ...prev,
-      fixedExpenses: prev.fixedExpenses.map(item => item.id === id ? { ...item, name, value } : item)
+      fixedExpenses: prev.fixedExpenses.map(item => item.id === id ? { ...item, name, value, dueDate } : item)
     }));
   };
 
@@ -434,12 +434,12 @@ export default function App() {
     }));
   };
 
-  const handleAddFixedExpense = (name: string, value: number) => {
+  const handleAddFixedExpense = (name: string, value: number, dueDate?: string) => {
     updateBudget(prev => ({
       ...prev,
       fixedExpenses: [
         ...prev.fixedExpenses,
-        { id: `fe-${Date.now()}`, name, value, isPaid: false }
+        { id: `fe-${Date.now()}`, name, value, isPaid: false, dueDate }
       ]
     }));
   };
@@ -772,7 +772,7 @@ export default function App() {
         <div className="flex-1 flex flex-col items-center justify-center min-h-[400px]" id="db_loading_spinner">
           <div className="flex flex-col items-center gap-4">
             <div className="w-12 h-12 rounded-full border-4 border-slate-200 border-t-teal-500 animate-spin" />
-            <p className="text-sm font-semibold text-slate-500 font-display">Sincronizando com o Supabase...</p>
+            <p className="text-sm font-semibold text-slate-500 font-display">Sincronizando com o Firebase...</p>
           </div>
         </div>
       ) : (
@@ -908,6 +908,8 @@ export default function App() {
                   onAddVariableExpense={handleAddVariableExpense}
                   onDeleteVariableExpense={handleDeleteVariableExpense}
                   onUpdateObservations={handleUpdateObservations}
+                  onToggleFixedExpensePaid={handleToggleFixedExpensePaid}
+                  onToggleVariableExpensePaid={handleToggleVariableExpensePaid}
                 />
               )}
 
@@ -931,6 +933,7 @@ export default function App() {
                   onDeleteFixedExpense={handleDeleteFixedExpense}
                   onDuplicateFixedExpenseToNextMonth={handleDuplicateFixedExpenseToNextMonth}
                   currentMonthName={budget.month}
+                  currentYear={budget.year}
                 />
               )}
 
