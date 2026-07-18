@@ -37,6 +37,10 @@
           "type": "object",
           "description": "Map of observations keyed by date."
         },
+        "custom_categories": {
+          "type": "array",
+          "description": "List of custom categories."
+        },
         "updated_at": {
           "type": "string",
           "format": "date-time",

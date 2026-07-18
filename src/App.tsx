@@ -31,8 +31,13 @@ import {
   saveBudgetToFirebase,
   deleteBudgetFromFirebase,
   bulkSaveBudgetsToFirebase,
-  testConnection as testFirebaseConnection
+  testConnection as testFirebaseConnection,
+  initAuth,
+  googleSignIn,
+  logoutGoogle
 } from './lib/firebase';
+
+import { exportBudgetToGoogleSheets } from './lib/googleSheets';
 
 // Types import
 import { Income, FixedExpense, SavingGoal, VariableExpense, MonthlyBudget } from './types';
@@ -221,6 +226,79 @@ export default function App() {
   const [dbError, setDbError] = useState<string | null>(null);
 
   const prevBudgetsRef = useRef<Record<string, MonthlyBudget>>(budgets);
+
+  // Google Integration States
+  const [googleToken, setGoogleToken] = useState<string | null>(null);
+  const [googleUser, setGoogleUser] = useState<any>(null);
+  const [isExportingSheets, setIsExportingSheets] = useState(false);
+  const [exportSuccessUrl, setExportSuccessUrl] = useState<string | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
+
+  // Google Auth lifecycle
+  useEffect(() => {
+    const unsubscribe = initAuth(
+      (user, token) => {
+        setGoogleUser(user);
+        setGoogleToken(token);
+      },
+      () => {
+        setGoogleUser(null);
+        setGoogleToken(null);
+      }
+    );
+    return () => unsubscribe();
+  }, []);
+
+  const handleConnectGoogle = async () => {
+    setExportError(null);
+    setExportSuccessUrl(null);
+    try {
+      const result = await googleSignIn();
+      if (result) {
+        setGoogleUser(result.user);
+        setGoogleToken(result.accessToken);
+      }
+    } catch (err: any) {
+      console.error("Failed to connect Google account:", err);
+      setExportError(err?.message || "Falha ao conectar conta Google. Verifique os pop-ups.");
+    }
+  };
+
+  const handleDisconnectGoogle = async () => {
+    setExportError(null);
+    setExportSuccessUrl(null);
+    try {
+      await logoutGoogle();
+      setGoogleUser(null);
+      setGoogleToken(null);
+    } catch (err: any) {
+      console.error("Failed to disconnect Google:", err);
+    }
+  };
+
+  const handleExportSheets = async () => {
+    if (!googleToken) {
+      setExportError("Você precisa estar conectado à sua conta Google para realizar o export.");
+      return;
+    }
+    setIsExportingSheets(true);
+    setExportError(null);
+    setExportSuccessUrl(null);
+
+    try {
+      const b = budgets[currentMonthKey];
+      if (!b) {
+        throw new Error("Nenhum orçamento encontrado para o mês selecionado.");
+      }
+      const result = await exportBudgetToGoogleSheets(b, googleToken);
+      setExportSuccessUrl(result.spreadsheetUrl);
+    } catch (err: any) {
+      console.error("Export to Sheets error:", err);
+      setExportError(err?.message || "Ocorreu um erro ao exportar para o Google Planilhas.");
+    } finally {
+      setIsExportingSheets(false);
+    }
+  };
 
   // Handle retry connection to Database (Firebase)
   const handleRetryDb = async () => {
@@ -538,6 +616,23 @@ export default function App() {
     updateBudget(prev => ({
       ...prev,
       variableExpenses: prev.variableExpenses.map(item => item.id === id ? { ...item, isPaid: !item.isPaid } : item)
+    }));
+  };
+
+  const handleAddCustomCategory = (name: string, note?: string) => {
+    updateBudget(prev => ({
+      ...prev,
+      customCategories: [
+        ...(prev.customCategories || []),
+        { id: `cat-${Date.now()}`, name, note }
+      ]
+    }));
+  };
+
+  const handleDeleteCustomCategory = (id: string) => {
+    updateBudget(prev => ({
+      ...prev,
+      customCategories: (prev.customCategories || []).filter(cat => cat.id !== id)
     }));
   };
 
@@ -952,6 +1047,9 @@ export default function App() {
                   onAddVariableExpense={handleAddVariableExpense}
                   onDeleteVariableExpense={handleDeleteVariableExpense}
                   onToggleVariableExpensePaid={handleToggleVariableExpensePaid}
+                  customCategories={budget.customCategories || []}
+                  onAddCustomCategory={handleAddCustomCategory}
+                  onDeleteCustomCategory={handleDeleteCustomCategory}
                 />
               )}
 
@@ -967,6 +1065,13 @@ export default function App() {
                   syncStatus={syncStatus}
                   dbError={dbError}
                   onRetrySync={handleRetryDb}
+                  googleToken={googleToken}
+                  onConnectGoogle={handleConnectGoogle}
+                  onDisconnectGoogle={handleDisconnectGoogle}
+                  isExportingSheets={isExportingSheets}
+                  exportSuccessUrl={exportSuccessUrl}
+                  exportError={exportError}
+                  onExportSheets={handleExportSheets}
                 />
               )}
             </motion.div>
@@ -1251,7 +1356,8 @@ export default function App() {
                       'Roupas / Compras',
                       'Educação / Cursos',
                       'Assinaturas / Serviços',
-                      'Outros'
+                      'Outros',
+                      ...(budget.customCategories || []).map(cat => cat.name)
                     ].map(cat => (
                       <option key={cat} value={cat}>{cat}</option>
                     ))}

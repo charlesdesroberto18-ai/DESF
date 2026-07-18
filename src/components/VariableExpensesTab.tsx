@@ -1,13 +1,16 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Plus, Trash2, Tag, Calendar, Search, Filter, AlertCircle, ShoppingCart, CheckCircle, Clock } from 'lucide-react';
-import { VariableExpense } from '../types';
+import { Plus, Trash2, Tag, Calendar, Search, Filter, AlertCircle, ShoppingCart, CheckCircle, Clock, FolderPlus, Sliders } from 'lucide-react';
+import { CustomCategory, VariableExpense } from '../types';
 
 interface VariableExpensesTabProps {
   variableExpenses: VariableExpense[];
   onAddVariableExpense: (description: string, category: string, value: number, date: string, isPaid: boolean) => void;
   onDeleteVariableExpense: (id: string) => void;
   onToggleVariableExpensePaid: (id: string) => void;
+  customCategories: CustomCategory[];
+  onAddCustomCategory: (name: string, note?: string) => void;
+  onDeleteCustomCategory: (id: string) => void;
 }
 
 const CATEGORIES = [
@@ -25,7 +28,10 @@ export default function VariableExpensesTab({
   variableExpenses,
   onAddVariableExpense,
   onDeleteVariableExpense,
-  onToggleVariableExpensePaid
+  onToggleVariableExpensePaid,
+  customCategories,
+  onAddCustomCategory,
+  onDeleteCustomCategory
 }: VariableExpensesTabProps) {
   const [description, setDescription] = React.useState('');
   const [category, setCategory] = React.useState(CATEGORIES[0]);
@@ -43,6 +49,14 @@ export default function VariableExpensesTab({
   const [selectedCategoryFilter, setSelectedCategoryFilter] = React.useState('Todas');
   const [selectedStatusFilter, setSelectedStatusFilter] = React.useState('Todas'); // Todas, Pago, Pendente
   const [validationError, setValidationError] = React.useState('');
+
+  const [newCatName, setNewCatName] = React.useState('');
+  const [newCatNote, setNewCatNote] = React.useState('');
+  const [catValidationError, setCatValidationError] = React.useState('');
+
+  const allCategories = React.useMemo(() => {
+    return [...CATEGORIES, ...customCategories.map(c => c.name)];
+  }, [customCategories]);
 
   const handleAddSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -64,6 +78,29 @@ export default function VariableExpensesTab({
     setDescription('');
     setValue('');
     setValidationError('');
+  };
+
+  const handleAddCatSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newCatName.trim()) {
+      setCatValidationError('Por favor, informe o nome da categoria.');
+      return;
+    }
+    const normalizedNew = newCatName.trim().toLowerCase();
+    
+    // Check if it already exists in defaults or customs
+    const existsInStandard = CATEGORIES.some(cat => cat.toLowerCase() === normalizedNew);
+    const existsInCustom = customCategories.some(cat => cat.name.toLowerCase() === normalizedNew);
+    
+    if (existsInStandard || existsInCustom) {
+      setCatValidationError('Esta categoria já existe (padrão ou personalizada).');
+      return;
+    }
+
+    onAddCustomCategory(newCatName.trim(), newCatNote.trim() || undefined);
+    setNewCatName('');
+    setNewCatNote('');
+    setCatValidationError('');
   };
 
   // Filter variable expenses based on search, category and status filter
@@ -165,7 +202,7 @@ export default function VariableExpensesTab({
                 className="pl-9 pr-4 py-2 w-full bg-slate-50 border border-slate-200 focus:bg-white focus:border-rose-500 rounded-xl text-xs font-semibold outline-none appearance-none transition-all text-slate-700 cursor-pointer"
               >
                 <option value="Todas">Categorias: Todas</option>
-                {CATEGORIES.map((cat) => (
+                {allCategories.map((cat) => (
                   <option key={cat} value={cat}>
                     {cat}
                   </option>
@@ -220,10 +257,21 @@ export default function VariableExpensesTab({
                             {item.isPaid ? 'Pago' : 'Pendente'}
                           </button>
                         </div>
-                        <div className="flex items-center gap-2 mt-0.5">
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-0.5">
                           <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wide">
                             {item.category}
                           </span>
+                          {(() => {
+                            const customCat = customCategories.find(c => c.name.toLowerCase() === item.category.toLowerCase());
+                            return customCat?.note ? (
+                              <>
+                                <span className="w-1 h-1 rounded-full bg-slate-300" />
+                                <span className="text-[9px] bg-indigo-50 border border-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded font-semibold max-w-[150px] truncate" title={customCat.note}>
+                                  🏷️ {customCat.note}
+                                </span>
+                              </>
+                            ) : null;
+                          })()}
                           <span className="w-1 h-1 rounded-full bg-slate-300" />
                           <span className="text-[10px] text-slate-400 font-mono font-medium">
                             {formatDateString(item.date)}
@@ -256,121 +304,209 @@ export default function VariableExpensesTab({
           </div>
         </div>
 
-        {/* Adicionar Novo Gasto Form */}
-        <div className="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm h-fit" id="new_variable_expense_form_card">
-          <h3 className="font-display font-semibold text-slate-800 text-base mb-4 flex items-center gap-2">
-            <Plus className="w-5 h-5 text-rose-500" />
-            Lançar Gasto Rápido
-          </h3>
+        {/* Formulário e Categorias */}
+        <div className="space-y-6">
+          {/* Adicionar Novo Gasto Form */}
+          <div className="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm h-fit" id="new_variable_expense_form_card">
+            <h3 className="font-display font-semibold text-slate-800 text-base mb-4 flex items-center gap-2">
+              <Plus className="w-5 h-5 text-rose-500" />
+              Lançar Gasto Rápido
+            </h3>
 
-          <form onSubmit={handleAddSubmit} className="space-y-4">
-            <div>
-              <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">Descrição</label>
-              <input
-                type="text"
-                required
-                placeholder="Ex: Pastel feira, Uber Dudinha"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 focus:border-rose-500 focus:ring-1 focus:ring-rose-500 rounded-lg text-xs py-2 px-3 font-semibold outline-none text-slate-700"
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
+            <form onSubmit={handleAddSubmit} className="space-y-4">
               <div>
-                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">Categoria</label>
-                <select
-                  value={category}
-                  onChange={(e) => setCategory(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 focus:border-rose-500 focus:ring-1 focus:ring-rose-500 rounded-lg text-xs py-2 px-2.5 font-semibold outline-none text-slate-700 cursor-pointer"
-                >
-                  {CATEGORIES.map((cat) => (
-                    <option key={cat} value={cat}>
-                      {cat}
-                    </option>
-                  ))}
-                </select>
+                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">Descrição</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Ex: Pastel feira, Uber Dudinha"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 focus:border-rose-500 focus:ring-1 focus:ring-rose-500 rounded-lg text-xs py-2 px-3 font-semibold outline-none text-slate-700"
+                />
               </div>
 
-              <div>
-                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">Valor</label>
-                <div className="relative">
-                  <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[11px] font-bold text-slate-400">R$</span>
-                  <input
-                    type="number"
-                    step="0.01"
-                    required
-                    placeholder="0,00"
-                    value={value}
-                    onChange={(e) => setValue(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 focus:border-rose-500 focus:ring-1 focus:ring-rose-500 rounded-lg text-xs py-2 pl-7 pr-2 font-semibold outline-none text-slate-700 font-mono"
-                  />
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">Categoria</label>
+                  <select
+                    value={category}
+                    onChange={(e) => setCategory(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 focus:border-rose-500 focus:ring-1 focus:ring-rose-500 rounded-lg text-xs py-2 px-2.5 font-semibold outline-none text-slate-700 cursor-pointer"
+                  >
+                    {allCategories.map((cat) => (
+                      <option key={cat} value={cat}>
+                        {cat}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">Valor</label>
+                  <div className="relative">
+                    <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[11px] font-bold text-slate-400">R$</span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      required
+                      placeholder="0,00"
+                      value={value}
+                      onChange={(e) => setValue(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-200 focus:border-rose-500 focus:ring-1 focus:ring-rose-500 rounded-lg text-xs py-2 pl-7 pr-2 font-semibold outline-none text-slate-700 font-mono"
+                    />
+                  </div>
                 </div>
               </div>
-            </div>
 
-            <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">Data do Gasto</label>
+                  <input
+                    type="date"
+                    required
+                    value={date}
+                    onChange={(e) => setDate(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 focus:border-rose-500 focus:ring-1 focus:ring-rose-500 rounded-lg text-xs py-2 px-3 font-semibold outline-none text-slate-700 font-mono cursor-pointer"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">Status</label>
+                  <select
+                    value={isPaid ? 'pago' : 'pendente'}
+                    onChange={(e) => setIsPaid(e.target.value === 'pago')}
+                    className="w-full bg-slate-50 border border-slate-200 focus:border-rose-500 focus:ring-1 focus:ring-rose-500 rounded-lg text-xs py-2 px-2.5 font-semibold outline-none text-slate-700 cursor-pointer"
+                  >
+                    <option value="pago">Pago</option>
+                    <option value="pendente">Pendente</option>
+                  </select>
+                </div>
+              </div>
+
+              {validationError && (
+                <div className="flex items-center gap-1.5 text-rose-600 text-[10px] font-semibold">
+                  <AlertCircle className="w-3.5 h-3.5" />
+                  <span>{validationError}</span>
+                </div>
+              )}
+
+              <button
+                type="submit"
+                className="w-full bg-rose-600 hover:bg-rose-700 text-white font-semibold text-xs py-2.5 px-4 rounded-xl transition-colors shadow-sm cursor-pointer"
+              >
+                Confirmar Lançamento
+              </button>
+            </form>
+
+            {/* Quick presets to add variables */}
+            <div className="mt-5 p-3.5 bg-slate-50/50 rounded-xl border border-slate-100">
+              <span className="text-[10px] text-slate-400 font-bold uppercase block mb-2">Exemplos rápidos:</span>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    onAddVariableExpense('Padaria / Café', 'Alimentação', 15.50, date, true);
+                  }}
+                  className="p-1.5 bg-white hover:bg-rose-50 hover:text-rose-600 border border-slate-200/50 text-[10px] text-slate-600 font-semibold rounded-lg text-left transition-colors cursor-pointer"
+                >
+                  ☕ Padaria: R$ 15,50
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onAddVariableExpense('Farmácia de Rotina', 'Saúde / Farmácia', 45.00, date, true);
+                  }}
+                  className="p-1.5 bg-white hover:bg-rose-50 hover:text-rose-600 border border-slate-200/50 text-[10px] text-slate-600 font-semibold rounded-lg text-left transition-colors cursor-pointer"
+                >
+                  💊 Farmácia: R$ 45,00
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Gerenciar Categorias Card */}
+          <div className="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm h-fit" id="manage_categories_card">
+            <h3 className="font-display font-semibold text-slate-800 text-base mb-1 flex items-center gap-2">
+              <FolderPlus className="w-5 h-5 text-indigo-500" />
+              Categorias Personalizadas
+            </h3>
+            <p className="text-[10px] text-slate-400 font-medium mb-4">
+              Crie novas categorias e atribua notas ou etiquetas personalizadas a elas.
+            </p>
+
+            <form onSubmit={handleAddCatSubmit} className="space-y-3.5 mb-5 pb-5 border-b border-slate-100">
               <div>
-                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">Data do Gasto</label>
+                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">Nome da Categoria</label>
                 <input
-                  type="date"
+                  type="text"
                   required
-                  value={date}
-                  onChange={(e) => setDate(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 focus:border-rose-500 focus:ring-1 focus:ring-rose-500 rounded-lg text-xs py-2 px-3 font-semibold outline-none text-slate-700 font-mono cursor-pointer"
+                  placeholder="Ex: Pet, Presentes, Carro..."
+                  value={newCatName}
+                  onChange={(e) => setNewCatName(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-lg text-xs py-2 px-3 font-semibold outline-none text-slate-700"
                 />
               </div>
 
               <div>
-                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">Status</label>
-                <select
-                  value={isPaid ? 'pago' : 'pendente'}
-                  onChange={(e) => setIsPaid(e.target.value === 'pago')}
-                  className="w-full bg-slate-50 border border-slate-200 focus:border-rose-500 focus:ring-1 focus:ring-rose-500 rounded-lg text-xs py-2 px-2.5 font-semibold outline-none text-slate-700 cursor-pointer"
-                >
-                  <option value="pago">Pago</option>
-                  <option value="pendente">Pendente</option>
-                </select>
+                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">Nota / Etiqueta</label>
+                <input
+                  type="text"
+                  placeholder="Ex: Ração do Toddy, Consórcio, etc..."
+                  value={newCatNote}
+                  onChange={(e) => setNewCatNote(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-lg text-xs py-2 px-3 font-semibold outline-none text-slate-700"
+                />
               </div>
-            </div>
 
-            {validationError && (
-              <div className="flex items-center gap-1.5 text-rose-600 text-[10px] font-semibold">
-                <AlertCircle className="w-3.5 h-3.5" />
-                <span>{validationError}</span>
-              </div>
-            )}
+              {catValidationError && (
+                <div className="flex items-center gap-1.5 text-rose-600 text-[10px] font-semibold">
+                  <AlertCircle className="w-3.5 h-3.5" />
+                  <span>{catValidationError}</span>
+                </div>
+              )}
 
-            <button
-              type="submit"
-              className="w-full bg-rose-600 hover:bg-rose-700 text-white font-semibold text-xs py-2.5 px-4 rounded-xl transition-colors shadow-sm cursor-pointer"
-            >
-              Confirmar Lançamento
-            </button>
-          </form>
-
-          {/* Quick presets to add variables */}
-          <div className="mt-5 p-3.5 bg-slate-50/50 rounded-xl border border-slate-100">
-            <span className="text-[10px] text-slate-400 font-bold uppercase block mb-2">Exemplos rápidos:</span>
-            <div className="grid grid-cols-2 gap-2">
               <button
-                type="button"
-                onClick={() => {
-                  onAddVariableExpense('Padaria / Café', 'Alimentação', 15.50, date, true);
-                }}
-                className="p-1.5 bg-white hover:bg-rose-50 hover:text-rose-600 border border-slate-200/50 text-[10px] text-slate-600 font-semibold rounded-lg text-left transition-colors cursor-pointer"
+                type="submit"
+                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs py-2.5 px-4 rounded-xl transition-colors shadow-sm cursor-pointer"
               >
-                ☕ Padaria: R$ 15,50
+                Salvar Categoria
               </button>
-              <button
-                type="button"
-                onClick={() => {
-                  onAddVariableExpense('Farmácia de Rotina', 'Saúde / Farmácia', 45.00, date, true);
-                }}
-                className="p-1.5 bg-white hover:bg-rose-50 hover:text-rose-600 border border-slate-200/50 text-[10px] text-slate-600 font-semibold rounded-lg text-left transition-colors cursor-pointer"
-              >
-                💊 Farmácia: R$ 45,00
-              </button>
+            </form>
+
+            <div className="space-y-2">
+              <span className="text-[10px] text-slate-400 font-bold uppercase block mb-2">Categorias Criadas:</span>
+              {customCategories.length > 0 ? (
+                <div className="space-y-1.5 max-h-[200px] overflow-y-auto pr-1">
+                  {customCategories.map((cat) => (
+                    <div
+                      key={cat.id}
+                      className="p-2.5 bg-slate-50 border border-slate-100 rounded-xl flex items-center justify-between gap-3 text-xs"
+                    >
+                      <div className="flex flex-col gap-0.5 min-w-0">
+                        <span className="font-bold text-slate-700 truncate">{cat.name}</span>
+                        {cat.note && (
+                          <span className="text-[9px] text-slate-400 font-medium truncate flex items-center gap-0.5">
+                            <span className="text-slate-300">└─</span> {cat.note}
+                          </span>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => onDeleteCustomCategory(cat.id)}
+                        className="p-1 text-slate-300 hover:text-rose-500 rounded hover:bg-rose-50 transition-colors cursor-pointer shrink-0"
+                        title="Deletar categoria"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-6 border border-dashed border-slate-200 rounded-xl bg-slate-50/50 text-slate-400 text-[10px] font-medium">
+                  Nenhuma categoria personalizada criada para este mês.
+                </div>
+              )}
             </div>
           </div>
         </div>

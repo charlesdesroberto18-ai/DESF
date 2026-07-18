@@ -1,6 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { getFirestore, doc, collection, getDocs, setDoc, deleteDoc, writeBatch, getDocFromServer } from 'firebase/firestore';
-import { getAuth } from 'firebase/auth';
+import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, User } from 'firebase/auth';
 import firebaseConfigJson from '../../firebase-applet-config.json';
 import { MonthlyBudget } from '../types';
 
@@ -9,7 +9,7 @@ const firebaseConfig = {
   appId: import.meta.env.VITE_FIREBASE_APP_ID || firebaseConfigJson.appId,
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY || firebaseConfigJson.apiKey,
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || firebaseConfigJson.authDomain,
-  firestoreDatabaseId: import.meta.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID || firebaseConfigJson.firestoreDatabaseId,
+  firestoreDatabaseId: import.meta.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID || (firebaseConfigJson as any).firestoreDatabaseId,
   storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || firebaseConfigJson.storageBucket,
   messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || firebaseConfigJson.messagingSenderId,
   measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || firebaseConfigJson.measurementId,
@@ -18,6 +18,59 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId || undefined);
 export const auth = getAuth(app);
+
+const provider = new GoogleAuthProvider();
+provider.addScope('https://www.googleapis.com/auth/spreadsheets');
+provider.addScope('https://www.googleapis.com/auth/drive.file');
+
+let isSigningIn = false;
+let cachedAccessToken: string | null = null;
+
+export const initAuth = (
+  onAuthSuccess?: (user: User, token: string) => void,
+  onAuthFailure?: () => void
+) => {
+  return onAuthStateChanged(auth, async (user: User | null) => {
+    if (user) {
+      if (cachedAccessToken) {
+        if (onAuthSuccess) onAuthSuccess(user, cachedAccessToken);
+      } else if (!isSigningIn) {
+        cachedAccessToken = null;
+        if (onAuthFailure) onAuthFailure();
+      }
+    } else {
+      cachedAccessToken = null;
+      if (onAuthFailure) onAuthFailure();
+    }
+  });
+};
+
+export const googleSignIn = async (): Promise<{ user: User; accessToken: string } | null> => {
+  try {
+    isSigningIn = true;
+    const result = await signInWithPopup(auth, provider);
+    const credential = GoogleAuthProvider.credentialFromResult(result);
+    if (!credential?.accessToken) {
+      throw new Error('Falha ao obter o token de acesso do Google.');
+    }
+    cachedAccessToken = credential.accessToken;
+    return { user: result.user, accessToken: cachedAccessToken };
+  } catch (error) {
+    console.error('Erro no Google Sign-in:', error);
+    throw error;
+  } finally {
+    isSigningIn = false;
+  }
+};
+
+export const getAccessToken = async (): Promise<string | null> => {
+  return cachedAccessToken;
+};
+
+export const logoutGoogle = async () => {
+  await auth.signOut();
+  cachedAccessToken = null;
+};
 
 export const isFirebaseConfigured = () => {
   return !!firebaseConfig.projectId;
@@ -97,7 +150,8 @@ export async function loadBudgetsFromFirebase(): Promise<Record<string, MonthlyB
         fixedExpenses: data.fixed_expenses || [],
         savingGoals: data.saving_goals || [],
         variableExpenses: data.variable_expenses || [],
-        observations: data.observations || {}
+        observations: data.observations || {},
+        customCategories: data.custom_categories || []
       };
     });
     return budgetsMap;
@@ -119,6 +173,7 @@ export async function saveBudgetToFirebase(monthKey: string, budget: MonthlyBudg
       saving_goals: budget.savingGoals,
       variable_expenses: budget.variableExpenses,
       observations: budget.observations || {},
+      custom_categories: budget.customCategories || [],
       updated_at: new Date().toISOString()
     });
     return true;
@@ -157,6 +212,7 @@ export async function bulkSaveBudgetsToFirebase(budgets: Record<string, MonthlyB
         saving_goals: budget.savingGoals,
         variable_expenses: budget.variableExpenses,
         observations: budget.observations || {},
+        custom_categories: budget.customCategories || [],
         updated_at: new Date().toISOString()
       });
     }

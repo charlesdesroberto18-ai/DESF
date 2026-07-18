@@ -32,6 +32,12 @@ export interface VariableExpense {
   isPaid: boolean; // true for Pago, false for Pendente
 }
 
+export interface CustomCategory {
+  id: string;
+  name: string;
+  note?: string;
+}
+
 export interface MonthlyBudget {
   month: string; // e.g., "JULHO"
   year: number; // e.g., 2026
@@ -40,4 +46,5 @@ export interface MonthlyBudget {
   savingGoals: SavingGoal[];
   variableExpenses: VariableExpense[];
   observations?: Record<string, string>; // date (YYYY-MM-DD) -> text
+  customCategories?: CustomCategory[];
 }

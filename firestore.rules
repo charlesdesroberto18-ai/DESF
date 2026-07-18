@@ -28,7 +28,9 @@ service cloud.firestore {
         && data.incomes is list
         && data.fixed_expenses is list
         && data.saving_goals is list
-        && data.variable_expenses is list;
+        && data.variable_expenses is list
+        && (!data.keys().hasAny(['custom_categories']) || data.custom_categories is list)
+        && (!data.keys().hasAny(['observations']) || data.observations is map);
     }
 
     // Match rule for monthly_budgets
