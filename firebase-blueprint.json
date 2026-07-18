@@ -1,0 +1,55 @@
+{
+  "entities": {
+    "MonthlyBudget": {
+      "title": "MonthlyBudget",
+      "description": "Financial budget for a specific month and year, including incomes, fixed expenses, saving goals, variable expenses, and observations.",
+      "type": "object",
+      "properties": {
+        "month_key": {
+          "type": "string",
+          "description": "Unique key representing the month in YYYY-MM format."
+        },
+        "month_name": {
+          "type": "string",
+          "description": "The name of the month (e.g., JULHO)."
+        },
+        "year": {
+          "type": "integer",
+          "description": "The budget year."
+        },
+        "incomes": {
+          "type": "array",
+          "description": "List of incomes."
+        },
+        "fixed_expenses": {
+          "type": "array",
+          "description": "List of fixed expenses."
+        },
+        "saving_goals": {
+          "type": "array",
+          "description": "List of saving goals."
+        },
+        "variable_expenses": {
+          "type": "array",
+          "description": "List of variable expenses."
+        },
+        "observations": {
+          "type": "object",
+          "description": "Map of observations keyed by date."
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "The timestamp when this document was last updated."
+        }
+      },
+      "required": ["month_name", "year", "incomes", "fixed_expenses", "saving_goals", "variable_expenses"]
+    }
+  },
+  "firestore": {
+    "monthly_budgets/{monthKey}": {
+      "schema": "MonthlyBudget",
+      "description": "A collection containing monthly budgets."
+    }
+  }
+}

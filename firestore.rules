@@ -1,0 +1,42 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global Safety Net - default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // Validation blueprint for MonthlyBudget
+    function isValidMonthlyBudget(data) {
+      return data.keys().hasAll(['month_name', 'year', 'incomes', 'fixed_expenses', 'saving_goals', 'variable_expenses'])
+        && data.month_name is string
+        && data.month_name.size() <= 100
+        && (data.year is int || data.year is float)
+        && data.incomes is list
+        && data.fixed_expenses is list
+        && data.saving_goals is list
+        && data.variable_expenses is list;
+    }
+
+    // Match rule for monthly_budgets
+    match /monthly_budgets/{monthKey} {
+      allow get: if isValidId(monthKey);
+      allow list: if true;
+      allow create, update: if isValidId(monthKey) && isValidMonthlyBudget(incoming());
+      allow delete: if isValidId(monthKey);
+    }
+  }
+}

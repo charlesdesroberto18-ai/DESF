@@ -1,0 +1,6 @@
+{
+  "name": "Dashboard Financeiro - Charles",
+  "description": "Um dashboard financeiro interativo e moderno para o Charles controlar suas entradas de garçom, contas fixas, caixinhas de reserva e gastos variáveis do dia a dia.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
