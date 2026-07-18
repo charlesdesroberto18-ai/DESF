@@ -11,7 +11,8 @@ import {
   RotateCcw,
   Plus,
   Settings,
-  Calendar
+  Calendar,
+  Wallet
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -472,7 +473,11 @@ export default function App() {
   const fixedTotal = budget.fixedExpenses.reduce((sum, item) => sum + item.value, 0);
   const caixinhasTotal = budget.savingGoals.reduce((sum, item) => sum + item.current, 0);
   const variableTotal = budget.variableExpenses.reduce((sum, item) => sum + item.value, 0);
-  const netBalance = totalIn - fixedTotal - caixinhasTotal - variableTotal;
+  
+  // New optimized metrics requested by Charles:
+  const balanceForAccounts = totalIn - variableTotal; // Saldo p/ pagar contas (Recebido - Variáveis)
+  const remainingBeforeSavings = totalIn - variableTotal - fixedTotal; // Sobra operacional antes das Caixinhas
+  const netBalance = totalIn - fixedTotal - caixinhasTotal - variableTotal; // Sobra líquida real final
 
   // --- HANDLER FUNCTIONS ---
 
@@ -892,10 +897,8 @@ export default function App() {
           </div>
         </div>
       ) : (
-        <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 mt-6 space-y-6" id="main_layout">
-        
-        {/* Responsive KPI Metrics Cards Block */}
-        <section className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3.5 md:gap-4.5" id="kpi_cards_section">
+        <main className="flex-1 max-w-7xl w-ful        {/* Responsive KPI Metrics Cards Block */}
+        <section className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3.5 md:gap-4.5" id="kpi_cards_section">
           <MetricCard
             id="metric-incomes"
             title="TOTAL QUE ENTROU"
@@ -905,6 +908,28 @@ export default function App() {
             subtitle="Ganhos semanais + extras"
             onClick={() => setActiveTab('incomes')}
             isActive={activeTab === 'incomes'}
+          />
+
+          <MetricCard
+            id="metric-variables"
+            title="(–) GASTOS VARIÁVEIS"
+            value={variableTotal}
+            icon={ShoppingCart}
+            color="indigo"
+            subtitle={`${budget.variableExpenses.length} compras do dia`}
+            onClick={() => setActiveTab('variables')}
+            isActive={activeTab === 'variables'}
+          />
+
+          <MetricCard
+            id="metric-balance-for-accounts"
+            title="SALDO P/ CONTAS"
+            value={balanceForAccounts}
+            icon={Wallet}
+            color="amber"
+            subtitle="Ganhos menos variáveis"
+            onClick={() => setActiveTab('overview')}
+            isActive={activeTab === 'overview' && false}
           />
 
           <MetricCard
@@ -929,39 +954,34 @@ export default function App() {
             isActive={activeTab === 'savings'}
           />
 
-          <MetricCard
-            id="metric-variables"
-            title="(–) GASTOS VARIÁVEIS"
-            value={variableTotal}
-            icon={ShoppingCart}
-            color="indigo"
-            subtitle={`${budget.variableExpenses.length} lançamentos diários`}
-            onClick={() => setActiveTab('variables')}
-            isActive={activeTab === 'variables'}
-          />
-
-          {/* NET BALANCE (Sobrou -> Poupança) Card */}
+          {/* NET BALANCE (Sobra Líquida Real) Card */}
           <div
             id="metric-balance"
-            className={`p-4.5 rounded-2xl border flex items-center justify-between transition-all col-span-2 md:col-span-3 lg:col-span-1 ${
+            onClick={() => setActiveTab('overview')}
+            className={`p-4.5 rounded-2xl border flex items-center justify-between transition-all cursor-pointer hover:shadow-md ${
+              activeTab === 'overview' ? 'ring-2 ring-slate-500/20' : ''
+            } ${
               netBalance >= 0
                 ? 'bg-emerald-600 text-white border-emerald-700 shadow-sm shadow-emerald-600/10'
                 : 'bg-rose-600 text-white border-rose-700 shadow-sm shadow-rose-600/10'
             }`}
           >
-            <div className="space-y-1 flex-1 min-w-0">
-              <span className="text-[10px] font-bold text-white/80 uppercase tracking-widest block">
-                SOBROU ➜ Poupança
+            <div className="space-y-1.5 flex-1 min-w-0">
+              <span className="text-[11px] font-bold text-white/80 uppercase tracking-wider block">
+                SOBRA LÍQUIDA REAL
               </span>
               <div className="font-display font-bold text-xl tracking-tight font-mono truncate">
                 R$ {netBalance.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </div>
-              <span className="text-[10px] text-white/80 font-medium block">
-                {netBalance >= 0 ? '✓ Orçamento controlado' : '✗ Orçamento negativo'}
+              <span className="text-[10px] text-white/90 font-medium block truncate" title={`Livre antes de poupar: R$ ${remainingBeforeSavings.toFixed(2)}`}>
+                Sobra s/ poupar: R$ {remainingBeforeSavings.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </span>
             </div>
             <div className="p-3 rounded-xl bg-white/15 border border-white/15 shrink-0 ml-3">
               <TrendingUp className={`w-5 h-5 ${netBalance >= 0 ? '' : 'rotate-180'}`} />
+            </div>
+          </div>
+        </section>Balance >= 0 ? '' : 'rotate-180'}`} />
             </div>
           </div>
         </section>
