@@ -437,7 +437,9 @@ export default function App() {
     incomes: [],
     fixedExpenses: [],
     savingGoals: [],
-    variableExpenses: []
+    variableExpenses: [],
+    customCategories: [],
+    accountCategories: []
   };
 
   // Helper to create an empty budget structure for a key
@@ -448,7 +450,9 @@ export default function App() {
       incomes: [],
       fixedExpenses: [],
       savingGoals: INITIAL_SAVING_GOALS.map(g => ({ ...g, current: 0 })),
-      variableExpenses: []
+      variableExpenses: [],
+      customCategories: [],
+      accountCategories: []
     };
   };
 
@@ -498,10 +502,10 @@ export default function App() {
   };
 
   // FIXED EXPENSES
-  const handleUpdateFixedExpense = (id: string, name: string, value: number, dueDate?: string) => {
+  const handleUpdateFixedExpense = (id: string, name: string, value: number, dueDate?: string, category?: string) => {
     updateBudget(prev => ({
       ...prev,
-      fixedExpenses: prev.fixedExpenses.map(item => item.id === id ? { ...item, name, value, dueDate } : item)
+      fixedExpenses: prev.fixedExpenses.map(item => item.id === id ? { ...item, name, value, dueDate, category } : item)
     }));
   };
 
@@ -512,12 +516,12 @@ export default function App() {
     }));
   };
 
-  const handleAddFixedExpense = (name: string, value: number, dueDate?: string) => {
+  const handleAddFixedExpense = (name: string, value: number, dueDate?: string, category?: string) => {
     updateBudget(prev => ({
       ...prev,
       fixedExpenses: [
         ...prev.fixedExpenses,
-        { id: `fe-${Date.now()}`, name, value, isPaid: false, dueDate }
+        { id: `fe-${Date.now()}`, name, value, isPaid: false, dueDate, category }
       ]
     }));
   };
@@ -633,6 +637,23 @@ export default function App() {
     updateBudget(prev => ({
       ...prev,
       customCategories: (prev.customCategories || []).filter(cat => cat.id !== id)
+    }));
+  };
+
+  const handleAddAccountCategory = (name: string, note?: string) => {
+    updateBudget(prev => ({
+      ...prev,
+      accountCategories: [
+        ...(prev.accountCategories || []),
+        { id: `cat-acc-${Date.now()}`, name, note }
+      ]
+    }));
+  };
+
+  const handleDeleteAccountCategory = (id: string) => {
+    updateBudget(prev => ({
+      ...prev,
+      accountCategories: (prev.accountCategories || []).filter(cat => cat.id !== id)
     }));
   };
 
@@ -1029,6 +1050,7 @@ export default function App() {
                   onDuplicateFixedExpenseToNextMonth={handleDuplicateFixedExpenseToNextMonth}
                   currentMonthName={budget.month}
                   currentYear={budget.year}
+                  accountCategories={budget.accountCategories || []}
                 />
               )}
 
@@ -1072,6 +1094,9 @@ export default function App() {
                   exportSuccessUrl={exportSuccessUrl}
                   exportError={exportError}
                   onExportSheets={handleExportSheets}
+                  accountCategories={budget.accountCategories || []}
+                  onAddAccountCategory={handleAddAccountCategory}
+                  onDeleteAccountCategory={handleDeleteAccountCategory}
                 />
               )}
             </motion.div>

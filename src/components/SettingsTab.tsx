@@ -1,6 +1,6 @@
 import React, { useRef, useState } from 'react';
-import { Trash2, Download, Upload, AlertTriangle, CheckCircle, RefreshCw, Info, FileSpreadsheet, ExternalLink, Lock, Check } from 'lucide-react';
-import { MonthlyBudget } from '../types';
+import { Trash2, Download, Upload, AlertTriangle, CheckCircle, RefreshCw, Info, FileSpreadsheet, ExternalLink, Lock, Check, Plus, CreditCard } from 'lucide-react';
+import { MonthlyBudget, CustomCategory } from '../types';
 
 interface SettingsTabProps {
   currentMonthName: string;
@@ -20,6 +20,9 @@ interface SettingsTabProps {
   exportSuccessUrl: string | null;
   exportError: string | null;
   onExportSheets: () => void;
+  accountCategories: CustomCategory[];
+  onAddAccountCategory: (name: string, note?: string) => void;
+  onDeleteAccountCategory: (id: string) => void;
 }
 
 export default function SettingsTab({
@@ -39,13 +42,38 @@ export default function SettingsTab({
   isExportingSheets,
   exportSuccessUrl,
   exportError,
-  onExportSheets
+  onExportSheets,
+  accountCategories,
+  onAddAccountCategory,
+  onDeleteAccountCategory
 }: SettingsTabProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [successMessage, setSuccessMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
   const [showConfirmClearMonth, setShowConfirmClearMonth] = useState(false);
   const [showConfirmClearAll, setShowConfirmClearAll] = useState(false);
+
+  // Custom Account Categories States
+  const [newAccountCatName, setNewAccountCatName] = useState('');
+  const [newAccountCatNote, setNewAccountCatNote] = useState('');
+  const [accountCatError, setAccountCatError] = useState('');
+
+  const handleAddAccountCatSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newAccountCatName.trim()) {
+      setAccountCatError('Por favor, digite o nome da categoria.');
+      return;
+    }
+    const exists = accountCategories.some(c => c.name.toLowerCase() === newAccountCatName.trim().toLowerCase());
+    if (exists) {
+      setAccountCatError('Esta categoria de conta já existe.');
+      return;
+    }
+    onAddAccountCategory(newAccountCatName.trim(), newAccountCatNote.trim() || undefined);
+    setNewAccountCatName('');
+    setNewAccountCatNote('');
+    setAccountCatError('');
+  };
 
   // Export JSON Backup
   const handleExportBackup = () => {
@@ -230,6 +258,120 @@ export default function SettingsTab({
               <Trash2 className="w-4 h-4" />
               Limpar Tudo (Reset Geral)
             </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Account Categories Management */}
+      <div className="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm space-y-5" id="account_categories_settings_card">
+        <div className="flex items-center gap-2">
+          <div className="p-2 bg-rose-50 text-rose-600 rounded-xl">
+            <CreditCard className="w-5 h-5" />
+          </div>
+          <div>
+            <h3 className="font-display font-semibold text-slate-800 text-base">
+              Categorias de Contas Fixas
+            </h3>
+            <p className="text-xs text-slate-400 font-medium">Configure novas categorias e etiquetas personalizadas para usar no seu orçamento de Contas Fixas.</p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
+          {/* Add Category Form */}
+          <div className="space-y-4">
+            <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest block">Adicionar Nova Categoria</h4>
+            <form onSubmit={handleAddAccountCatSubmit} className="space-y-3.5">
+              <div>
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Nome da Categoria</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Ex: Streaming, Cartão de Crédito..."
+                  value={newAccountCatName}
+                  onChange={(e) => setNewAccountCatName(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 focus:bg-white focus:border-rose-500 focus:ring-1 focus:ring-rose-500 rounded-xl text-xs py-2.5 px-3.5 font-semibold outline-none text-slate-700"
+                />
+              </div>
+
+              <div>
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Nota / Etiqueta Personalizada</label>
+                <input
+                  type="text"
+                  placeholder="Ex: Netflix/Spotify, Bradesco, etc..."
+                  value={newAccountCatNote}
+                  onChange={(e) => setNewAccountCatNote(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 focus:bg-white focus:border-rose-500 focus:ring-1 focus:ring-rose-500 rounded-xl text-xs py-2.5 px-3.5 font-semibold outline-none text-slate-700"
+                />
+              </div>
+
+              {accountCatError && (
+                <div className="flex items-center gap-1.5 text-rose-600 text-[10px] font-semibold">
+                  <AlertTriangle className="w-3.5 h-3.5" />
+                  <span>{accountCatError}</span>
+                </div>
+              )}
+
+              <button
+                type="submit"
+                className="w-full bg-rose-600 hover:bg-rose-700 text-white font-semibold text-xs py-2.5 px-4 rounded-xl transition-colors shadow-sm cursor-pointer flex items-center justify-center gap-1.5"
+              >
+                <Plus className="w-4 h-4" />
+                Salvar Nova Categoria
+              </button>
+            </form>
+          </div>
+
+          {/* List custom and default categories */}
+          <div className="space-y-4">
+            <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest block">Categorias Cadastradas</h4>
+            
+            {/* Standard pre-defined system categories */}
+            <div className="space-y-2">
+              <span className="text-[10px] text-slate-400 font-bold uppercase block">Padrão do Sistema:</span>
+              <div className="flex flex-wrap gap-1.5">
+                {['Moradia', 'Alimentação', 'Saúde', 'Lazer', 'Assinaturas', 'Serviços / Contas', 'Transporte', 'Educação', 'Outros'].map((std) => (
+                  <span key={std} className="bg-slate-100 text-slate-600 text-[10px] px-2.5 py-1 rounded-lg font-medium">
+                    {std}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            {/* Custom User account categories */}
+            <div className="space-y-2 pt-2">
+              <span className="text-[10px] text-slate-400 font-bold uppercase block">Suas Categorias Personalizadas:</span>
+              {accountCategories.length > 0 ? (
+                <div className="space-y-2 max-h-[160px] overflow-y-auto pr-1">
+                  {accountCategories.map((cat) => (
+                    <div
+                      key={cat.id}
+                      className="p-2.5 bg-rose-50/40 border border-rose-100/60 rounded-xl flex items-center justify-between gap-3 text-xs"
+                    >
+                      <div className="flex flex-col gap-0.5 min-w-0">
+                        <span className="font-bold text-slate-800 truncate">{cat.name}</span>
+                        {cat.note && (
+                          <span className="text-[10px] text-slate-500 font-medium truncate flex items-center gap-0.5">
+                            <span className="text-slate-300">└─</span> {cat.note}
+                          </span>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => onDeleteAccountCategory(cat.id)}
+                        className="p-1 text-slate-300 hover:text-rose-500 rounded hover:bg-rose-50 transition-colors cursor-pointer shrink-0"
+                        title="Deletar categoria de conta"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-6 border border-dashed border-slate-200 rounded-xl bg-slate-50/50 text-slate-400 text-[10px] font-medium">
+                  Nenhuma categoria personalizada criada ainda. Adicione no formulário ao lado!
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>

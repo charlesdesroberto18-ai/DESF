@@ -30,6 +30,7 @@ service cloud.firestore {
         && data.saving_goals is list
         && data.variable_expenses is list
         && (!data.keys().hasAny(['custom_categories']) || data.custom_categories is list)
+        && (!data.keys().hasAny(['account_categories']) || data.account_categories is list)
         && (!data.keys().hasAny(['observations']) || data.observations is map);
     }
 

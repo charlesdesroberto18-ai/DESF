@@ -13,6 +13,7 @@ export interface FixedExpense {
   value: number;
   isPaid: boolean;
   dueDate?: string; // Format: "YYYY-MM-DD"
+  category?: string; // Category of the account (fixed expense)
 }
 
 export interface SavingGoal {
@@ -47,4 +48,5 @@ export interface MonthlyBudget {
   variableExpenses: VariableExpense[];
   observations?: Record<string, string>; // date (YYYY-MM-DD) -> text
   customCategories?: CustomCategory[];
+  accountCategories?: CustomCategory[];
 }

@@ -1,17 +1,20 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Plus, Check, CreditCard, Sparkles, AlertCircle, Trash2, Edit3, Copy, X, Calendar } from 'lucide-react';
-import { FixedExpense } from '../types';
+import { FixedExpense, CustomCategory } from '../types';
+
+export const DEFAULT_ACCOUNT_CATEGORIES = ['Moradia', 'Alimentação', 'Saúde', 'Lazer', 'Assinaturas', 'Serviços / Contas', 'Transporte', 'Educação', 'Outros'];
 
 interface FixedExpensesTabProps {
   fixedExpenses: FixedExpense[];
-  onUpdateFixedExpense: (id: string, name: string, value: number, dueDate?: string) => void;
+  onUpdateFixedExpense: (id: string, name: string, value: number, dueDate?: string, category?: string) => void;
   onToggleFixedExpensePaid: (id: string) => void;
-  onAddFixedExpense: (name: string, value: number, dueDate?: string) => void;
+  onAddFixedExpense: (name: string, value: number, dueDate?: string, category?: string) => void;
   onDeleteFixedExpense: (id: string) => void;
   onDuplicateFixedExpenseToNextMonth: (id: string) => void;
   currentMonthName: string;
   currentYear: number;
+  accountCategories: CustomCategory[];
 }
 
 export default function FixedExpensesTab({
@@ -22,11 +25,13 @@ export default function FixedExpensesTab({
   onDeleteFixedExpense,
   onDuplicateFixedExpenseToNextMonth,
   currentMonthName,
-  currentYear
+  currentYear,
+  accountCategories
 }: FixedExpensesTabProps) {
   const [newName, setNewName] = React.useState('');
   const [newValue, setNewValue] = React.useState('');
   const [dueDay, setDueDay] = React.useState('');
+  const [category, setCategory] = React.useState('Moradia');
   const [showAddForm, setShowAddForm] = React.useState(false);
   const [validationError, setValidationError] = React.useState('');
 
@@ -35,6 +40,7 @@ export default function FixedExpensesTab({
   const [editName, setEditName] = useState('');
   const [editValue, setEditValue] = useState('');
   const [editDueDay, setEditDueDay] = useState('');
+  const [editCategory, setEditCategory] = useState('');
 
   // Duplication notification toast
   const [duplicateMessage, setDuplicateMessage] = useState('');
@@ -64,10 +70,11 @@ export default function FixedExpensesTab({
       return;
     }
     const dueDateStr = dueDay ? `${year}-${String(monthNumber).padStart(2, '0')}-${String(dueDay).padStart(2, '0')}` : undefined;
-    onAddFixedExpense(newName.trim(), val, dueDateStr);
+    onAddFixedExpense(newName.trim(), val, dueDateStr, category);
     setNewName('');
     setNewValue('');
     setDueDay('');
+    setCategory('Moradia');
     setShowAddForm(false);
     setValidationError('');
   };
@@ -76,6 +83,7 @@ export default function FixedExpensesTab({
     setEditingId(exp.id);
     setEditName(exp.name);
     setEditValue(exp.value.toString());
+    setEditCategory(exp.category || '');
     if (exp.dueDate) {
       const parts = exp.dueDate.split('-');
       if (parts.length === 3) {
@@ -94,7 +102,7 @@ export default function FixedExpensesTab({
     if (isNaN(val) || val < 0) return;
 
     const dueDateStr = editDueDay ? `${year}-${String(monthNumber).padStart(2, '0')}-${String(editDueDay).padStart(2, '0')}` : undefined;
-    onUpdateFixedExpense(id, editName.trim(), val, dueDateStr);
+    onUpdateFixedExpense(id, editName.trim(), val, dueDateStr, editCategory);
     setEditingId(null);
   };
 
@@ -238,6 +246,19 @@ export default function FixedExpensesTab({
                             />
                           </div>
                           <select
+                            value={editCategory}
+                            onChange={(e) => setEditCategory(e.target.value)}
+                            className="bg-white border border-slate-200 focus:border-rose-500 rounded-lg text-xs font-semibold p-1.5 outline-none text-slate-700 w-32 shrink-0 cursor-pointer"
+                          >
+                            <option value="">Sem Categoria</option>
+                            {DEFAULT_ACCOUNT_CATEGORIES.map((cat) => (
+                              <option key={cat} value={cat}>{cat}</option>
+                            ))}
+                            {accountCategories.map((cat) => (
+                              <option key={cat.id} value={cat.name}>{cat.name}</option>
+                            ))}
+                          </select>
+                          <select
                             value={editDueDay}
                             onChange={(e) => setEditDueDay(e.target.value)}
                             className="bg-white border border-slate-200 focus:border-rose-500 rounded-lg text-xs font-semibold p-1.5 outline-none text-slate-700 w-28 shrink-0 cursor-pointer"
@@ -250,7 +271,7 @@ export default function FixedExpensesTab({
                         </div>
                       ) : (
                         <div>
-                          <div className="flex items-center gap-2">
+                          <div className="flex flex-wrap items-center gap-2">
                             <span className={`text-sm font-semibold transition-colors block ${exp.isPaid ? 'text-slate-500 line-through' : 'text-slate-800'}`}>
                               {exp.name}
                             </span>
@@ -265,9 +286,25 @@ export default function FixedExpensesTab({
                               </span>
                             )}
                           </div>
-                          <span className="text-[10px] text-slate-400 font-medium font-mono">
-                            Fixo mensal — {exp.isPaid ? '✓ Pago' : '✗ Pendente'}
-                          </span>
+                          <div className="text-[10px] text-slate-400 font-medium font-mono flex flex-wrap items-center gap-1.5 mt-1">
+                            <span>Fixo mensal — {exp.isPaid ? '✓ Pago' : '✗ Pendente'}</span>
+                            {exp.category && (() => {
+                              const match = accountCategories.find(c => c.name === exp.category);
+                              return (
+                                <>
+                                  <span className="text-slate-300">•</span>
+                                  <span className="bg-rose-50 text-rose-600 border border-rose-100 px-1.5 py-0.2 rounded font-sans text-[9px] font-bold uppercase tracking-wider">
+                                    {exp.category}
+                                  </span>
+                                  {match?.note && (
+                                    <span className="text-slate-400 font-sans text-[10px] italic">
+                                      ({match.note})
+                                    </span>
+                                  )}
+                                </>
+                              );
+                            })()}
+                          </div>
                         </div>
                       )}
                     </div>
@@ -372,6 +409,22 @@ export default function FixedExpensesTab({
                   className="w-full bg-slate-50 border border-slate-200 focus:border-rose-500 focus:ring-1 focus:ring-rose-500 rounded-lg text-xs py-2 pl-8 pr-3 font-semibold outline-none text-slate-700"
                 />
               </div>
+            </div>
+
+            <div>
+              <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">Categoria da Conta</label>
+              <select
+                value={category}
+                onChange={(e) => setCategory(e.target.value)}
+                className="w-full bg-slate-50 border border-slate-200 focus:border-rose-500 focus:ring-1 focus:ring-rose-500 rounded-lg text-xs py-2 px-3 font-semibold outline-none text-slate-700 cursor-pointer"
+              >
+                {DEFAULT_ACCOUNT_CATEGORIES.map((cat) => (
+                  <option key={cat} value={cat}>{cat}</option>
+                ))}
+                {accountCategories.map((cat) => (
+                  <option key={cat.id} value={cat.name}>{cat.name}</option>
+                ))}
+              </select>
             </div>
 
             <div>

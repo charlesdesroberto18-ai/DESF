@@ -151,7 +151,8 @@ export async function loadBudgetsFromFirebase(): Promise<Record<string, MonthlyB
         savingGoals: data.saving_goals || [],
         variableExpenses: data.variable_expenses || [],
         observations: data.observations || {},
-        customCategories: data.custom_categories || []
+        customCategories: data.custom_categories || [],
+        accountCategories: data.account_categories || []
       };
     });
     return budgetsMap;
@@ -174,6 +175,7 @@ export async function saveBudgetToFirebase(monthKey: string, budget: MonthlyBudg
       variable_expenses: budget.variableExpenses,
       observations: budget.observations || {},
       custom_categories: budget.customCategories || [],
+      account_categories: budget.accountCategories || [],
       updated_at: new Date().toISOString()
     });
     return true;
@@ -213,6 +215,7 @@ export async function bulkSaveBudgetsToFirebase(budgets: Record<string, MonthlyB
         variable_expenses: budget.variableExpenses,
         observations: budget.observations || {},
         custom_categories: budget.customCategories || [],
+        account_categories: budget.accountCategories || [],
         updated_at: new Date().toISOString()
       });
     }

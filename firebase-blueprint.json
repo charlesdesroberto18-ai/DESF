@@ -41,6 +41,10 @@
           "type": "array",
           "description": "List of custom categories."
         },
+        "account_categories": {
+          "type": "array",
+          "description": "List of account-specific custom categories."
+        },
         "updated_at": {
           "type": "string",
           "format": "date-time",
