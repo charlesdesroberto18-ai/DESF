@@ -919,40 +919,44 @@ export default function App() {
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3.5" id="operational_flow_grid">
                 <MetricCard
                   id="metric-incomes"
-                  title="1. TOTAL QUE ENTROU"
+                  step={1}
+                  title="TOTAL QUE ENTROU"
                   value={totalIn}
                   icon={DollarSign}
                   color="emerald"
-                  subtitle="Ganhos semanais + extras"
+                  subtitle="Ganhos + extras"
                   onClick={() => setActiveTab('incomes')}
                   isActive={activeTab === 'incomes'}
                 />
 
                 <MetricCard
                   id="metric-variables"
-                  title="2. (–) GASTOS VARIÁVEIS"
+                  step={2}
+                  title="GASTOS VARIÁVEIS"
                   value={variableTotal}
                   icon={ShoppingCart}
                   color="indigo"
-                  subtitle={`${budget.variableExpenses.length} compras do dia`}
+                  subtitle={`${budget.variableExpenses.length} compras`}
                   onClick={() => setActiveTab('variables')}
                   isActive={activeTab === 'variables'}
                 />
 
                 <MetricCard
                   id="metric-balance-for-accounts"
-                  title="3. SALDO P/ CONTAS"
+                  step={3}
+                  title="SALDO P/ CONTAS"
                   value={balanceForAccounts}
                   icon={Wallet}
                   color="amber"
-                  subtitle="Insumo livre p/ contas fixas"
+                  subtitle="Livre p/ contas fixas"
                   onClick={() => setActiveTab('overview')}
                   isActive={activeTab === 'overview'}
                 />
 
                 <MetricCard
                   id="metric-fixed"
-                  title="4. (–) CONTAS FIXAS"
+                  step={4}
+                  title="CONTAS FIXAS"
                   value={fixedTotal}
                   icon={CreditCard}
                   color="rose"
@@ -963,7 +967,8 @@ export default function App() {
 
                 <MetricCard
                   id="metric-free-balance"
-                  title="5. SALDO LIVRE"
+                  step={5}
+                  title="SALDO LIVRE"
                   value={remainingBeforeSavings}
                   icon={TrendingUp}
                   color="teal"
@@ -986,11 +991,12 @@ export default function App() {
               <div className="grid grid-cols-2 lg:grid-cols-1 gap-3.5" id="savings_leftover_grid">
                 <MetricCard
                   id="metric-savings"
-                  title="6. (–) CAIXINHAS"
+                  step={6}
+                  title="CAIXINHAS"
                   value={caixinhasTotal}
                   icon={PiggyBank}
                   color="teal"
-                  subtitle="Metas de reserva mensal"
+                  subtitle="Metas de reserva"
                   onClick={() => setActiveTab('savings')}
                   isActive={activeTab === 'savings'}
                 />
@@ -999,7 +1005,7 @@ export default function App() {
                 <div
                   id="metric-balance"
                   onClick={() => setActiveTab('overview')}
-                  className={`p-4.5 rounded-2xl border flex items-center justify-between transition-all cursor-pointer hover:shadow-md ${
+                  className={`p-3.5 sm:p-4 rounded-2xl border flex flex-col justify-between transition-all cursor-pointer hover:shadow-md ${
                     activeTab === 'overview' ? 'ring-2 ring-slate-500/20' : ''
                   } ${
                     netBalance >= 0
@@ -1007,19 +1013,27 @@ export default function App() {
                       : 'bg-rose-600 text-white border-rose-700 shadow-sm shadow-rose-600/10'
                   }`}
                 >
-                  <div className="space-y-1.5 flex-1 min-w-0">
-                    <span className="text-[11px] font-bold text-white/80 uppercase tracking-wider block">
-                      7. SOBRA LÍQUIDA REAL
-                    </span>
-                    <div className="font-display font-bold text-xl tracking-tight font-mono truncate">
+                  {/* Top Header Row within the Custom Card */}
+                  <div className="flex items-center justify-between w-full border-b border-white/10 pb-1.5 mb-1.5 gap-2">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <span className="inline-flex items-center justify-center w-3.5 h-3.5 text-[8.5px] font-extrabold bg-white/25 text-white rounded-full shrink-0">
+                        7
+                      </span>
+                      <span className="text-[9.5px] font-bold text-white/90 uppercase tracking-wider truncate">
+                        SOBRA LÍQUIDA REAL
+                      </span>
+                    </div>
+                    <TrendingUp className={`w-3.5 h-3.5 text-white/90 shrink-0 ${netBalance >= 0 ? '' : 'rotate-180'}`} />
+                  </div>
+
+                  {/* Value and Subtitle section */}
+                  <div className="space-y-0.5 min-w-0">
+                    <div className="font-display font-bold text-sm sm:text-base md:text-sm lg:text-[13px] xl:text-[15px] 2xl:text-lg text-white tracking-tight font-mono truncate" title={`R$ ${netBalance.toFixed(2)}`}>
                       R$ {netBalance.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </div>
-                    <span className="text-[10px] text-white/90 font-medium block truncate" title={`Livre antes de poupar: R$ ${remainingBeforeSavings.toFixed(2)}`}>
+                    <span className="text-[9px] sm:text-[10px] text-white/80 font-medium block truncate leading-tight" title={`Livre antes de poupar: R$ ${remainingBeforeSavings.toFixed(2)}`}>
                       Sobra s/ poupar: R$ {remainingBeforeSavings.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </span>
-                  </div>
-                  <div className="p-3 rounded-xl bg-white/15 border border-white/15 shrink-0 ml-3">
-                    <TrendingUp className={`w-5 h-5 ${netBalance >= 0 ? '' : 'rotate-180'}`} />
                   </div>
                 </div>
               </div>
