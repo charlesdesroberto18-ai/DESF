@@ -8,10 +8,27 @@
 }
 
 /* Custom global styles to make it look premium */
+html {
+  scroll-behavior: smooth;
+}
+
 body {
   font-family: var(--font-sans);
   background-color: #f8fafc; /* Slate-50 off-white background */
+  background-image:
+    radial-gradient(circle at 8% 0%, rgba(20, 184, 166, 0.07), transparent 28rem),
+    radial-gradient(circle at 92% 18%, rgba(99, 102, 241, 0.05), transparent 24rem);
+  background-attachment: fixed;
   color: #0f172a; /* Slate-900 */
+}
+
+#tab_contents_container {
+  scroll-margin-top: 9rem;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
 }
 
 button,
@@ -47,4 +64,18 @@ button,
 
 .animate-pulse-slow {
   animation: progressGlow 3s infinite ease-in-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

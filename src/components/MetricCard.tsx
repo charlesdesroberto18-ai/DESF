@@ -75,17 +75,18 @@ export default function MetricCard({
   return (
     <motion.div
       id={id}
-      whileHover={{ y: -2, transition: { duration: 0.2 } }}
-      className={`relative rounded-2xl bg-white border border-slate-100 shadow-sm transition-all ${
-        onClick ? 'cursor-pointer hover:shadow-md' : ''
+      whileHover={{ y: -3, transition: { duration: 0.2 } }}
+      className={`relative rounded-3xl bg-white/95 border border-white shadow-md shadow-slate-200/50 transition-all ${
+        onClick ? 'cursor-pointer hover:shadow-xl hover:shadow-slate-200/70' : ''
       } ${isActive ? style.activeBorder : ''}`}
     >
+      <span className={`absolute top-0 left-5 right-5 h-0.5 rounded-full ${style.accent}`} aria-hidden="true" />
       <button
         type="button"
         onClick={onClick}
         disabled={!onClick}
         aria-label={accessibleLabel || `${title}. ${formattedValue}. ${subtitle || ''}${details ? `. ${details}` : ''}`}
-        className="w-full min-h-32 p-3.5 sm:p-4 text-left flex flex-col justify-between rounded-2xl disabled:cursor-default focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 focus-visible:ring-offset-2"
+        className="w-full min-h-32 p-3.5 sm:p-4 text-left flex flex-col justify-between rounded-3xl disabled:cursor-default focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 focus-visible:ring-offset-2"
       >
         <div className="w-full border-b border-slate-100 pb-2 mb-2">
           <div className="flex items-center justify-between gap-2">
@@ -94,7 +95,9 @@ export default function MetricCard({
                 {step}
               </span>
             )}
-            <Icon className={`w-4 h-4 ${style.text} shrink-0`} aria-hidden="true" />
+            <span className={`w-8 h-8 rounded-xl border flex items-center justify-center ${style.bg}`}>
+              <Icon className="w-4 h-4 shrink-0" aria-hidden="true" />
+            </span>
           </div>
           <span className="text-[9px] sm:text-[10px] font-bold text-slate-500 uppercase tracking-wide leading-tight two-line-clamp min-h-6 mt-1 block">
             {title}
@@ -102,7 +105,7 @@ export default function MetricCard({
         </div>
 
         <div className="space-y-1 min-w-0">
-          <div className="font-display font-bold text-[13px] sm:text-base xl:text-lg text-slate-800 tracking-tight font-mono tabular-nums whitespace-nowrap">
+          <div className="font-display font-extrabold text-sm sm:text-base xl:text-xl text-slate-900 tracking-tight font-mono tabular-nums whitespace-nowrap">
             {formattedValue}
           </div>
           {subtitle && (

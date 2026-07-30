@@ -66,13 +66,23 @@ const MONTH_NAMES = [
 
 const LOCAL_STORAGE_KEY_MULTI = 'charles_financial_dashboard_multi_budget_v2';
 const LOCAL_STORAGE_KEY_LEGACY = 'charles_financial_dashboard_budget';
+type ActiveTab = 'overview' | 'incomes' | 'fixed' | 'savings' | 'variables' | 'settings';
+const NAV_TABS: Array<{ id: ActiveTab; label: string; mobileLabel: string; icon: typeof TrendingUp }> = [
+  { id: 'overview', label: 'Painel Geral', mobileLabel: 'Painel', icon: TrendingUp },
+  { id: 'incomes', label: 'Entradas', mobileLabel: 'Entradas', icon: DollarSign },
+  { id: 'fixed', label: 'Contas Fixas', mobileLabel: 'Contas', icon: CreditCard },
+  { id: 'savings', label: 'Caixinhas', mobileLabel: 'Metas', icon: PiggyBank },
+  { id: 'variables', label: 'Gastos Variáveis', mobileLabel: 'Gastos', icon: ShoppingCart },
+  { id: 'settings', label: 'Configurações', mobileLabel: 'Ajustes', icon: Settings }
+];
 
 export default function App() {
   // Current tab active: 'overview' | 'incomes' | 'fixed' | 'savings' | 'variables' | 'settings'
-  const [activeTab, setActiveTab] = useState<'overview' | 'incomes' | 'fixed' | 'savings' | 'variables' | 'settings'>('overview');
+  const [activeTab, setActiveTab] = useState<ActiveTab>('overview');
 
   // Help Modal State
   const [showHelp, setShowHelp] = useState(false);
+  const [showDemoConfirm, setShowDemoConfirm] = useState(false);
 
   // New Month Modal State
   const [showNewMonthModal, setShowNewMonthModal] = useState(false);
@@ -488,6 +498,21 @@ export default function App() {
   const balanceForAccounts = totalIn - variableTotal; // Saldo p/ pagar contas (Recebido - Variáveis)
   const remainingBeforeSavings = totalIn - variableTotal - fixedTotal; // Sobra operacional antes das Caixinhas
   const netBalance = totalIn - fixedTotal - caixinhasTotal - variableTotal; // Sobra líquida real final
+  const paidFixedCount = budget.fixedExpenses.filter(item => item.isPaid).length;
+  const fixedProgress = budget.fixedExpenses.length > 0
+    ? Math.round((paidFixedCount / budget.fixedExpenses.length) * 100)
+    : 0;
+  const savingTargetTotal = budget.savingGoals.reduce((sum, item) => sum + item.target, 0);
+  const savingsProgress = savingTargetTotal > 0
+    ? Math.min(100, Math.round((caixinhasTotal / savingTargetTotal) * 100))
+    : 0;
+
+  const navigateToTab = (tab: ActiveTab) => {
+    setActiveTab(tab);
+    window.requestAnimationFrame(() => {
+      document.getElementById('tab_contents_container')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  };
 
   // --- HANDLER FUNCTIONS ---
 
@@ -808,14 +833,14 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col antialiased selection:bg-teal-500 selection:text-white pb-12" id="app_root_container">
+    <div className="min-h-screen bg-slate-50 flex flex-col antialiased selection:bg-teal-500 selection:text-white pb-28 sm:pb-12" id="app_root_container">
       {/* Top Professional Header */}
-      <header className="sticky top-0 z-40 bg-white border-b border-slate-100 shadow-sm" id="main_header">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex flex-col sm:flex-row items-center justify-between gap-4">
+      <header className="sticky top-0 z-40 bg-white/90 backdrop-blur-xl border-b border-white/80 shadow-sm shadow-slate-200/50" id="main_header">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3.5 flex flex-col sm:flex-row items-center justify-between gap-3">
           
           {/* Brand Logo & Name */}
           <div className="flex items-center gap-3">
-            <div className="bg-gradient-to-tr from-teal-500 to-emerald-600 p-2.5 rounded-xl text-white shadow-sm shadow-emerald-500/20">
+            <div className="bg-gradient-to-tr from-teal-500 to-emerald-600 p-2.5 rounded-2xl text-white shadow-lg shadow-emerald-500/20 ring-1 ring-white/60">
               <TrendingUp className="w-6 h-6" />
             </div>
             <div>
@@ -886,8 +911,8 @@ export default function App() {
 
             <button
               id="demo_data_loader_btn"
-              onClick={handleLoadDemoData}
-              className="bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold text-xs py-2 px-3.5 rounded-xl transition-all border border-emerald-200/50 flex items-center gap-1.5 cursor-pointer"
+              onClick={() => setShowDemoConfirm(true)}
+              className="hidden md:flex bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold text-xs py-2 px-3.5 rounded-xl transition-all border border-emerald-200/50 items-center gap-1.5 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
             >
               <Sparkles className="w-3.5 h-3.5" />
               Demo Completa
@@ -915,6 +940,101 @@ export default function App() {
         </div>
       ) : (
         <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 mt-6 space-y-6" id="main_layout">
+          <section
+            className="relative overflow-hidden rounded-[28px] bg-slate-950 text-white p-5 sm:p-7 lg:p-8 shadow-xl shadow-slate-900/10"
+            aria-labelledby="month-overview-title"
+            id="month_overview_hero"
+          >
+            <div className="absolute -top-24 -right-20 w-72 h-72 rounded-full bg-teal-500/20 blur-3xl pointer-events-none" />
+            <div className="absolute -bottom-28 left-1/3 w-64 h-64 rounded-full bg-emerald-500/10 blur-3xl pointer-events-none" />
+            <div className="relative grid grid-cols-1 lg:grid-cols-[1.15fr_0.85fr] gap-7 lg:items-center">
+              <div>
+                <div className="flex flex-wrap items-center gap-2 mb-3">
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-white/10 border border-white/10 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-teal-200">
+                    <Calendar className="w-3.5 h-3.5" aria-hidden="true" />
+                    {budget.month} {budget.year}
+                  </span>
+                  <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[10px] font-bold border ${
+                    totalIn === 0
+                      ? 'bg-amber-400/10 text-amber-200 border-amber-300/15'
+                      : netBalance >= 0
+                        ? 'bg-emerald-400/10 text-emerald-200 border-emerald-300/15'
+                        : 'bg-rose-400/10 text-rose-200 border-rose-300/15'
+                  }`}>
+                    <span className={`w-1.5 h-1.5 rounded-full ${totalIn === 0 ? 'bg-amber-300' : netBalance >= 0 ? 'bg-emerald-300' : 'bg-rose-300'}`} />
+                    {totalIn === 0 ? 'Aguardando entradas' : netBalance >= 0 ? 'Planejamento positivo' : 'Atenção ao saldo'}
+                  </span>
+                </div>
+                <h2 id="month-overview-title" className="font-display font-bold text-2xl sm:text-3xl tracking-tight">
+                  Charles, seu mês em um só olhar.
+                </h2>
+                <p className="text-sm text-slate-300 mt-2 max-w-xl leading-relaxed">
+                  {totalIn === 0
+                    ? 'Registre a primeira entrada para acompanhar a distribuição do dinheiro e o saldo real do mês.'
+                    : netBalance >= 0
+                      ? 'As entradas cobrem o planejamento atual. Continue acompanhando contas, gastos e metas.'
+                      : 'As despesas previstas ainda superam as entradas. Use os indicadores para decidir os próximos ajustes.'}
+                </p>
+
+                <div className="flex flex-wrap gap-2.5 mt-5" aria-label="Ações rápidas do mês">
+                  <button
+                    type="button"
+                    onClick={() => navigateToTab('incomes')}
+                    className="inline-flex items-center gap-2 rounded-xl bg-white text-slate-900 hover:bg-teal-50 px-4 py-2.5 text-xs font-bold shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-300"
+                  >
+                    <DollarSign className="w-4 h-4 text-emerald-600" aria-hidden="true" />
+                    Registrar entrada
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleOpenQuickAdd}
+                    className="inline-flex items-center gap-2 rounded-xl bg-white/10 hover:bg-white/15 border border-white/10 px-4 py-2.5 text-xs font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-300"
+                  >
+                    <ShoppingCart className="w-4 h-4 text-rose-300" aria-hidden="true" />
+                    Registrar gasto
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => navigateToTab('savings')}
+                    className="inline-flex items-center gap-2 rounded-xl bg-white/10 hover:bg-white/15 border border-white/10 px-4 py-2.5 text-xs font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-300"
+                  >
+                    <PiggyBank className="w-4 h-4 text-teal-300" aria-hidden="true" />
+                    Ver Caixinhas
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="col-span-2 rounded-2xl bg-white/[0.08] border border-white/10 p-4 sm:p-5 backdrop-blur-sm">
+                  <span className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">Saldo final projetado</span>
+                  <strong className={`block font-display font-mono tabular-nums text-2xl sm:text-3xl mt-1 ${netBalance >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}>
+                    {netBalance.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                  </strong>
+                  <span className="text-[11px] text-slate-400 mt-1 block">Depois de contas, gastos e Caixinhas</span>
+                </div>
+                <div className="rounded-2xl bg-white/[0.06] border border-white/10 p-4">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Contas pagas</span>
+                    <strong className="text-sm font-mono text-white">{fixedProgress}%</strong>
+                  </div>
+                  <div className="h-1.5 bg-white/10 rounded-full overflow-hidden mt-3" role="progressbar" aria-label={`${fixedProgress}% das contas fixas pagas`} aria-valuenow={fixedProgress} aria-valuemin={0} aria-valuemax={100}>
+                    <div className="h-full bg-rose-400 rounded-full transition-all" style={{ width: `${fixedProgress}%` }} />
+                  </div>
+                  <span className="text-[10px] text-slate-400 mt-2 block">{paidFixedCount} de {budget.fixedExpenses.length}</span>
+                </div>
+                <div className="rounded-2xl bg-white/[0.06] border border-white/10 p-4">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Metas</span>
+                    <strong className="text-sm font-mono text-white">{savingsProgress}%</strong>
+                  </div>
+                  <div className="h-1.5 bg-white/10 rounded-full overflow-hidden mt-3" role="progressbar" aria-label={`${savingsProgress}% das metas de Caixinhas alcançadas`} aria-valuenow={savingsProgress} aria-valuemin={0} aria-valuemax={100}>
+                    <div className="h-full bg-teal-400 rounded-full transition-all" style={{ width: `${savingsProgress}%` }} />
+                  </div>
+                  <span className="text-[10px] text-slate-400 mt-2 block">{budget.savingGoals.length} {budget.savingGoals.length === 1 ? 'Caixinha' : 'Caixinhas'}</span>
+                </div>
+              </div>
+            </div>
+          </section>
           
           {/* Responsive KPI Metrics Cards Block */}
           <section className="space-y-5" id="kpi_cards_section" aria-labelledby="cash-flow-title">
@@ -1052,30 +1172,25 @@ export default function App() {
           </section>
 
         {/* Tab Navigation Menu */}
-        <section className="bg-white p-1 rounded-2xl border border-slate-100 shadow-sm flex flex-wrap gap-1" id="tab_navigation">
-          {[
-            { id: 'overview', label: 'Painel Geral', icon: TrendingUp },
-            { id: 'incomes', label: 'Entradas', icon: DollarSign },
-            { id: 'fixed', label: 'Contas Fixas', icon: CreditCard },
-            { id: 'savings', label: 'Caixinhas', icon: PiggyBank },
-            { id: 'variables', label: 'Gastos Variáveis', icon: ShoppingCart },
-            { id: 'settings', label: 'Configurações', icon: Settings }
-          ].map((tab) => {
+        <section className="hidden sm:flex sticky top-[76px] z-30 bg-white/90 backdrop-blur-xl p-1.5 rounded-2xl border border-white shadow-lg shadow-slate-200/50 gap-1" id="tab_navigation">
+          {NAV_TABS.map((tab) => {
             const Icon = tab.icon;
             const isSelected = activeTab === tab.id;
             return (
               <button
                 key={tab.id}
                 id={`tab_trigger_${tab.id}`}
-                onClick={() => setActiveTab(tab.id as any)}
-                className={`flex-1 min-w-[120px] py-3.5 px-4 text-xs font-semibold rounded-xl flex items-center justify-center gap-2.5 transition-all duration-200 cursor-pointer ${
+                onClick={() => navigateToTab(tab.id)}
+                aria-current={isSelected ? 'page' : undefined}
+                className={`flex-1 min-w-0 py-3 px-2 lg:px-4 text-xs font-semibold rounded-xl flex items-center justify-center gap-2 transition-all duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 ${
                   isSelected
                     ? 'bg-slate-900 text-white shadow-sm'
                     : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
                 }`}
               >
                 <Icon className="w-4 h-4 shrink-0" />
-                <span>{tab.label}</span>
+                <span className="hidden md:inline">{tab.label}</span>
+                <span className="md:hidden">{tab.mobileLabel}</span>
               </button>
             );
           })}
@@ -1191,6 +1306,31 @@ export default function App() {
       </main>
       )}
 
+      <nav
+        className="sm:hidden fixed inset-x-2 bottom-2 z-40 grid grid-cols-6 gap-1 rounded-2xl border border-white/80 bg-white/95 backdrop-blur-xl p-1.5 shadow-2xl shadow-slate-900/20"
+        aria-label="Navegação principal"
+        id="mobile_tab_navigation"
+      >
+        {NAV_TABS.map((tab) => {
+          const Icon = tab.icon;
+          const isSelected = activeTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => navigateToTab(tab.id)}
+              aria-current={isSelected ? 'page' : undefined}
+              className={`min-w-0 rounded-xl py-2 flex flex-col items-center justify-center gap-1 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 ${
+                isSelected ? 'bg-slate-900 text-white' : 'text-slate-500 hover:bg-slate-50'
+              }`}
+            >
+              <Icon className="w-4 h-4" aria-hidden="true" />
+              <span className="text-[8.5px] font-bold leading-none truncate w-full px-0.5">{tab.mobileLabel}</span>
+            </button>
+          );
+        })}
+      </nav>
+
       {/* New Month Creation Modal */}
       {showNewMonthModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm" id="new_month_modal_overlay">
@@ -1303,6 +1443,43 @@ export default function App() {
         </div>
       )}
 
+      <AnimatePresence>
+        {showDemoConfirm && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/55 backdrop-blur-sm">
+            <motion.div
+              role="alertdialog"
+              aria-modal="true"
+              aria-labelledby="demo-confirm-title"
+              initial={{ opacity: 0, scale: 0.96, y: 12 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.96, y: 12 }}
+              className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-100"
+            >
+              <div className="w-11 h-11 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center mb-4">
+                <Sparkles className="w-5 h-5" aria-hidden="true" />
+              </div>
+              <h3 id="demo-confirm-title" className="font-display font-bold text-slate-900 text-lg">Carregar dados de demonstração?</h3>
+              <p className="text-sm text-slate-500 leading-relaxed mt-2">
+                A demonstração substituirá os lançamentos do mês selecionado. Use esta opção somente para explorar o painel com dados fictícios.
+              </p>
+              <div className="flex gap-3 mt-6">
+                <button type="button" onClick={() => setShowDemoConfirm(false)} className="flex-1 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 py-3 text-xs font-bold">Cancelar</button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleLoadDemoData();
+                    setShowDemoConfirm(false);
+                  }}
+                  className="flex-1 rounded-xl bg-slate-900 hover:bg-slate-800 text-white py-3 text-xs font-bold"
+                >
+                  Carregar demonstração
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
       {/* Help Modal */}
       <AnimatePresence>
         {showHelp && (
@@ -1368,42 +1545,29 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      {/* Floating Action Button (FAB) for Quick Add Expense */}
-      <div className="fixed bottom-6 right-6 z-40 md:bottom-8 md:right-8">
-        <motion.button
-          whileHover={{ scale: 1.1 }}
-          whileTap={{ scale: 0.95 }}
-          onClick={handleOpenQuickAdd}
-          className="bg-slate-900 hover:bg-slate-800 text-white rounded-full p-4 md:p-4.5 shadow-xl flex items-center justify-center gap-2 group transition-all cursor-pointer border border-slate-850"
-          id="fab-quick-add"
-          title="Lançamento Rápido de Gasto"
-        >
-          <Plus className="w-5 h-5 transition-transform duration-300 group-hover:rotate-90" />
-          <span className="max-w-0 overflow-hidden group-hover:max-w-xs transition-all duration-300 ease-in-out whitespace-nowrap text-xs font-semibold pr-0 group-hover:pr-1">
-            Gasto Rápido
-          </span>
-          <ShoppingCart className="w-4 h-4 text-pink-400" />
-        </motion.button>
-      </div>
-
       {/* Quick Add Variable Expense Modal */}
       <AnimatePresence>
         {showQuickAddModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm" id="quick_add_modal_overlay">
             <motion.div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="quick-add-title"
               initial={{ opacity: 0, scale: 0.95, y: 10 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 10 }}
-              className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-xl border border-slate-100 space-y-4"
+              className="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl border border-slate-100 space-y-4"
               id="quick_add_modal_box"
             >
               <div className="flex justify-between items-center pb-2 border-b border-slate-100">
-                <h3 className="font-display font-bold text-slate-800 text-base flex items-center gap-1.5">
+                <h3 id="quick-add-title" className="font-display font-bold text-slate-800 text-base flex items-center gap-1.5">
                   <ShoppingCart className="w-5 h-5 text-rose-500" />
                   Gasto Rápido (Variável)
                 </h3>
                 <button
+                  type="button"
                   onClick={() => setShowQuickAddModal(false)}
+                  aria-label="Fechar lançamento rápido"
                   className="text-slate-400 hover:text-slate-600 font-bold text-xs p-1 rounded-md cursor-pointer"
                 >
                   ✕
@@ -1412,10 +1576,11 @@ export default function App() {
 
               <form onSubmit={handleQuickAddSubmit} className="space-y-4">
                 <div>
-                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
+                  <label htmlFor="quick-expense-description" className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
                     Descrição do Gasto
                   </label>
                   <input
+                    id="quick-expense-description"
                     type="text"
                     required
                     placeholder="Ex: Padaria, Uber, Almoço..."
@@ -1427,10 +1592,11 @@ export default function App() {
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
+                    <label htmlFor="quick-expense-value" className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
                       Valor (R$)
                     </label>
                     <input
+                      id="quick-expense-value"
                       type="number"
                       step="0.01"
                       required
@@ -1442,10 +1608,11 @@ export default function App() {
                   </div>
 
                   <div>
-                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
+                    <label htmlFor="quick-expense-date" className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
                       Data
                     </label>
                     <input
+                      id="quick-expense-date"
                       type="date"
                       required
                       value={quickDate}
@@ -1456,10 +1623,11 @@ export default function App() {
                 </div>
 
                 <div>
-                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
+                  <label htmlFor="quick-expense-category" className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
                     Categoria
                   </label>
                   <select
+                    id="quick-expense-category"
                     value={quickCategory}
                     onChange={(e) => setQuickCategory(e.target.value)}
                     className="w-full bg-slate-50 border border-slate-200 rounded-lg text-xs py-2 px-3 font-semibold outline-none text-slate-700 cursor-pointer"
@@ -1488,6 +1656,7 @@ export default function App() {
                     <button
                       type="button"
                       onClick={() => setQuickIsPaid(true)}
+                      aria-pressed={quickIsPaid}
                       className={`py-2 px-3 text-xs font-semibold rounded-lg border transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
                         quickIsPaid
                           ? 'bg-emerald-50 text-emerald-700 border-emerald-200 shadow-sm'
@@ -1500,6 +1669,7 @@ export default function App() {
                     <button
                       type="button"
                       onClick={() => setQuickIsPaid(false)}
+                      aria-pressed={!quickIsPaid}
                       className={`py-2 px-3 text-xs font-semibold rounded-lg border transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
                         !quickIsPaid
                           ? 'bg-amber-50 text-amber-700 border-amber-200 shadow-sm'
