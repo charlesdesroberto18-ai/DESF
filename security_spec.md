@@ -5,7 +5,9 @@
 - A monthly budget must have a month name (string) and a year (integer).
 - `incomes`, `fixed_expenses`, `saving_goals`, and `variable_expenses` are arrays.
 - `observations` is an object.
-- Since we are using an anonymous/public style or simple auth style without user-specific scoping, the rules will allow public/anonymous reads and writes, but with strict validation of keys and types. (Wait! Let's check if there is an auth system in the app. No, it's just local storage synchronizing, so we'll allow standard reading and writing for the workspace/testing without blocking, but validate structures to prevent injection and poison).
+- A cópia local continua disponível sem login, mas qualquer leitura ou escrita no Firestore exige uma sessão autenticada pelo Firebase.
+- A coleção atual é compartilhada por compatibilidade com os registros existentes. A próxima migração de esquema deve mover os documentos para `users/{uid}/monthly_budgets/{monthKey}` antes de permitir múltiplos usuários.
+- O arquivo `firestore.rules` só entra em vigor após um deploy específico do Firebase; publicar a interface na Vercel não altera as regras remotas.
 
 ## 2. The "Dirty Dozen" Payloads
 Here are 12 specific payloads that should fail static or relational validation:

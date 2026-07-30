@@ -2,16 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   TrendingUp,
-  TrendingDown,
-  DollarSign,
   Wallet,
-  PiggyBank,
   Target,
   Percent,
   Calendar,
-  ChevronLeft,
-  ChevronRight,
-  Plus,
   Trash2,
   X,
   StickyNote,
@@ -21,6 +15,8 @@ import {
   ShoppingCart
 } from 'lucide-react';
 import { FixedExpense, VariableExpense, SavingGoal, Income } from '../types';
+
+const MAX_MONEY_VALUE = 999_999_999.99;
 
 interface FinancialChartsProps {
   totalIn: number;
@@ -55,7 +51,6 @@ export default function FinancialCharts({
   caixinhasTotal,
   fixedExpenses,
   variableExpenses,
-  savingGoals,
   currentMonthName,
   currentYear,
   incomes,
@@ -71,11 +66,6 @@ export default function FinancialCharts({
   const despesasTotais = fixedTotal + variableTotal;
   const totalOutWithCaixinhas = despesasTotais + caixinhasTotal;
   const balance = totalIn - totalOutWithCaixinhas;
-
-  // KPIs Calculations
-  const totalMetaTarget = savingGoals.reduce((sum, g) => sum + g.target, 0);
-  const totalMetaRestante = savingGoals.reduce((sum, g) => sum + Math.max(0, g.target - g.current), 0);
-  const percentMetaConcluida = totalMetaTarget > 0 ? Math.round((caixinhasTotal / totalMetaTarget) * 100) : 0;
 
   // Percentages relative to total income (for allocation stack)
   const percentFixedOfIn = totalIn > 0 ? (fixedTotal / totalIn) * 100 : 0;
@@ -190,6 +180,19 @@ export default function FinancialCharts({
     }
   }, [selectedDay, monthNumber, year, observations]);
 
+  useEffect(() => {
+    if (selectedDay === null) return;
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setSelectedDay(null);
+      }
+    };
+
+    document.addEventListener('keydown', handleEscape);
+    return () => document.removeEventListener('keydown', handleEscape);
+  }, [selectedDay]);
+
   // Handler for type toggling in quick add form
   const handleTypeChange = (type: 'income' | 'expense') => {
     setQuickType(type);
@@ -219,17 +222,19 @@ export default function FinancialCharts({
       return;
     }
 
-    const val = parseFloat(valueInput);
-    if (isNaN(val) || val <= 0) {
-      setModalError('Por favor, informe um valor maior que zero.');
+    const val = Number(valueInput);
+    if (!Number.isFinite(val) || val <= 0 || val > MAX_MONEY_VALUE) {
+      setModalError('Informe um valor entre R$ 0,01 e R$ 999.999.999,99.');
       return;
     }
 
+    const normalizedValue = Math.round(val * 100) / 100;
+
     if (quickType === 'income') {
       const weekNum = Math.min(5, Math.ceil(selectedDay / 7)) as 1 | 2 | 3 | 4 | 5;
-      onAddIncome(desc.trim(), val, categoryInput, selectedDateString, weekNum);
+      onAddIncome(desc.trim(), normalizedValue, categoryInput, selectedDateString, weekNum);
     } else {
-      onAddVariableExpense(desc.trim(), categoryInput, val, selectedDateString, isPaidInput);
+      onAddVariableExpense(desc.trim(), categoryInput, normalizedValue, selectedDateString, isPaidInput);
     }
 
     // Reset simple fields
@@ -394,107 +399,6 @@ export default function FinancialCharts({
             <span>Parabéns! Nenhuma conta com vencimento pendente para o mês de {currentMonthName.toLowerCase()}.</span>
           </div>
         )}
-      </div>
-
-      {/* 6 Indicadores Financeiros do Dashboard */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3.5" id="indicators_grid">
-        {/* 1. Receita Total */}
-        <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm flex flex-col justify-between" id="indicator_revenue">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Receita Total</span>
-            <div className="p-1.5 bg-emerald-50 text-emerald-600 rounded-lg">
-              <TrendingUp className="w-4 h-4" />
-            </div>
-          </div>
-          <div>
-            <div className="text-sm font-bold text-slate-800 font-mono">
-              R$ {totalIn.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </div>
-            <span className="text-[9px] text-emerald-600 font-medium mt-1 block">Tudo que entrou no mês</span>
-          </div>
-        </div>
-
-        {/* 2. Despesas Totais */}
-        <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm flex flex-col justify-between" id="indicator_total_expenses">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Despesas Totais</span>
-            <div className="p-1.5 bg-rose-50 text-rose-500 rounded-lg">
-              <TrendingDown className="w-4 h-4" />
-            </div>
-          </div>
-          <div>
-            <div className="text-sm font-bold text-slate-800 font-mono">
-              R$ {despesasTotais.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </div>
-            <span className="text-[9px] text-rose-500 font-medium mt-1 block">Fixas + Variáveis</span>
-          </div>
-        </div>
-
-        {/* 3. Saldo Atual */}
-        <div className={`p-4 rounded-xl border shadow-sm flex flex-col justify-between ${
-          balance >= 0 ? 'bg-white border-slate-100' : 'bg-rose-50/50 border-rose-200'
-        }`} id="indicator_current_balance">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Saldo Atual</span>
-            <div className={`p-1.5 rounded-lg ${balance >= 0 ? 'bg-teal-50 text-teal-600' : 'bg-rose-100 text-rose-600'}`}>
-              <Wallet className="w-4 h-4" />
-            </div>
-          </div>
-          <div>
-            <div className={`text-sm font-bold font-mono ${balance >= 0 ? 'text-slate-800' : 'text-rose-600'}`}>
-              R$ {balance.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </div>
-            <span className="text-[9px] text-slate-400 font-medium mt-1 block">Saldo final livre</span>
-          </div>
-        </div>
-
-        {/* 4. Economia do Mês */}
-        <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm flex flex-col justify-between" id="indicator_economy">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Economia (Mês)</span>
-            <div className="p-1.5 bg-teal-50 text-teal-600 rounded-lg">
-              <PiggyBank className="w-4 h-4" />
-            </div>
-          </div>
-          <div>
-            <div className="text-sm font-bold text-slate-800 font-mono">
-              R$ {caixinhasTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </div>
-            <span className="text-[9px] text-teal-600 font-medium mt-1 block">Guardado nas Caixinhas</span>
-          </div>
-        </div>
-
-        {/* 5. Restante para a Meta */}
-        <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm flex flex-col justify-between" id="indicator_remaining_goal">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Falta para Meta</span>
-            <div className="p-1.5 bg-amber-50 text-amber-600 rounded-lg">
-              <Target className="w-4 h-4" />
-            </div>
-          </div>
-          <div>
-            <div className="text-sm font-bold text-slate-800 font-mono">
-              R$ {totalMetaRestante.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </div>
-            <span className="text-[9px] text-amber-600 font-medium mt-1 block">Para atingir as metas</span>
-          </div>
-        </div>
-
-        {/* 6. Percentual da Meta */}
-        <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm flex flex-col justify-between" id="indicator_goal_percentage">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Meta Concluída</span>
-            <div className="p-1.5 bg-indigo-50 text-indigo-600 rounded-lg">
-              <Percent className="w-4 h-4" />
-            </div>
-          </div>
-          <div>
-            <div className="text-sm font-bold text-slate-800 font-mono">
-              {percentMetaConcluida}%
-            </div>
-            <span className="text-[9px] text-indigo-500 font-medium mt-1 block">Progresso total</span>
-          </div>
-        </div>
       </div>
 
       {/* SEÇÃO DE ANÁLISE DE FLUXO E DISTRIBUIÇÃO */}
@@ -687,7 +591,7 @@ export default function FinancialCharts({
           </div>
           <ul className="grid grid-cols-1 md:grid-cols-3 gap-3 flex-1">
             {quickInsights.map((insight, index) => (
-              <li key={insight} className="bg-white/5 border border-white/10 rounded-xl p-3.5 text-xs leading-relaxed text-slate-200 flex gap-2.5">
+              <li key={insight} className="privacy-value bg-white/5 border border-white/10 rounded-xl p-3.5 text-xs leading-relaxed text-slate-200 flex gap-2.5">
                 <span className="w-5 h-5 rounded-full bg-teal-500/20 text-teal-300 font-bold flex items-center justify-center shrink-0" aria-hidden="true">{index + 1}</span>
                 {insight}
               </li>
@@ -736,12 +640,27 @@ export default function FinancialCharts({
               const hasIncomes = cell.incomesSum > 0;
               const hasExpenses = cell.expensesSum > 0;
               const hasObs = cell.hasObservation;
+              const dayAriaLabel = [
+                `${cell.day} de ${currentMonthName.toLowerCase()} de ${currentYear}`,
+                hasIncomes
+                  ? `Entradas de ${cell.incomesSum!.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`
+                  : 'Sem entradas',
+                hasExpenses
+                  ? `Saídas de ${cell.expensesSum!.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`
+                  : 'Sem saídas',
+                cell.hasUnpaidBills ? 'Há contas pendentes' : '',
+                hasObs ? 'Possui observação' : '',
+                'Abrir detalhes do dia'
+              ].filter(Boolean).join('. ');
 
               return (
-                <div
+                <button
+                  type="button"
                   key={cell.key}
                   onClick={() => setSelectedDay(cell.day!)}
-                  className={`bg-white min-h-[72px] md:min-h-[90px] p-2 hover:bg-slate-50/70 transition-all cursor-pointer flex flex-col justify-between group relative ${
+                  aria-label={dayAriaLabel}
+                  aria-current={cell.isToday ? 'date' : undefined}
+                  className={`bg-white min-h-[72px] md:min-h-[90px] p-2 text-left hover:bg-slate-50/70 transition-all cursor-pointer flex flex-col justify-between group relative focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-teal-600 ${
                     cell.isToday ? 'ring-2 ring-teal-500/25 bg-teal-50/10' : ''
                   }`}
                 >
@@ -798,7 +717,7 @@ export default function FinancialCharts({
                       )}
                     </div>
                   </div>
-                </div>
+                </button>
               );
             })}
           </div>
@@ -813,6 +732,10 @@ export default function FinancialCharts({
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="day-modal-title"
+              aria-describedby="day-modal-description"
               className="bg-white rounded-2xl max-w-4xl w-full p-6 shadow-xl border border-slate-100 space-y-5 max-h-[90vh] overflow-y-auto"
               id="day_modal_box"
             >
@@ -821,14 +744,16 @@ export default function FinancialCharts({
                 <div className="flex items-center gap-2">
                   <Calendar className="w-5 h-5 text-teal-600" />
                   <div>
-                    <h3 className="font-display font-bold text-slate-800 text-lg">
+                    <h3 id="day-modal-title" className="font-display font-bold text-slate-800 text-lg">
                       Movimentações de {selectedDay} de {currentMonthName.toLowerCase()}
                     </h3>
-                    <p className="text-xs text-slate-400">Lançamentos e observações rápidos para esta data específica.</p>
+                    <p id="day-modal-description" className="text-xs text-slate-400">Lançamentos e observações rápidos para esta data específica.</p>
                   </div>
                 </div>
                 <button
+                  type="button"
                   onClick={() => setSelectedDay(null)}
+                  aria-label="Fechar detalhes do dia"
                   className="text-slate-400 hover:text-slate-600 p-1 bg-slate-50 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
                 >
                   <X className="w-5 h-5" />
@@ -1020,6 +945,8 @@ export default function FinancialCharts({
                           <input
                             type="number"
                             step="0.01"
+                            min="0.01"
+                            max={MAX_MONEY_VALUE}
                             value={valueInput}
                             onChange={(e) => setValueInput(e.target.value)}
                             placeholder="0,00"

@@ -11,6 +11,10 @@ service cloud.firestore {
       return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
 
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
     function incoming() {
       return request.resource.data;
     }
@@ -22,24 +26,37 @@ service cloud.firestore {
     // Validation blueprint for MonthlyBudget
     function isValidMonthlyBudget(data) {
       return data.keys().hasAll(['month_name', 'year', 'incomes', 'fixed_expenses', 'saving_goals', 'variable_expenses'])
+        && data.keys().hasOnly(['month_name', 'year', 'incomes', 'fixed_expenses', 'saving_goals', 'variable_expenses', 'custom_categories', 'account_categories', 'observations', 'updated_at'])
         && data.month_name is string
         && data.month_name.size() <= 100
-        && (data.year is int || data.year is float)
+        && data.year is int
+        && data.year >= 2000
+        && data.year <= 2100
         && data.incomes is list
+        && data.incomes.size() <= 5000
         && data.fixed_expenses is list
+        && data.fixed_expenses.size() <= 1000
         && data.saving_goals is list
+        && data.saving_goals.size() <= 500
         && data.variable_expenses is list
+        && data.variable_expenses.size() <= 10000
         && (!data.keys().hasAny(['custom_categories']) || data.custom_categories is list)
+        && (!data.keys().hasAny(['custom_categories']) || data.custom_categories.size() <= 500)
         && (!data.keys().hasAny(['account_categories']) || data.account_categories is list)
+        && (!data.keys().hasAny(['account_categories']) || data.account_categories.size() <= 500)
         && (!data.keys().hasAny(['observations']) || data.observations is map);
     }
 
     // Match rule for monthly_budgets
     match /monthly_budgets/{monthKey} {
-      allow get: if isValidId(monthKey);
-      allow list: if true;
-      allow create, update: if isValidId(monthKey) && isValidMonthlyBudget(incoming());
-      allow delete: if isValidId(monthKey);
+      // Keep the existing shared collection structure, but never expose
+      // financial data to anonymous requests.
+      allow get: if isSignedIn() && isValidId(monthKey);
+      allow list: if isSignedIn();
+      allow create, update: if isSignedIn()
+        && isValidId(monthKey)
+        && isValidMonthlyBudget(incoming());
+      allow delete: if isSignedIn() && isValidId(monthKey);
     }
   }
 }

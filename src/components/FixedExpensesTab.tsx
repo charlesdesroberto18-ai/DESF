@@ -4,6 +4,7 @@ import { Plus, Check, CreditCard, Sparkles, AlertCircle, Trash2, Edit3, Copy, X,
 import { FixedExpense, CustomCategory } from '../types';
 
 export const DEFAULT_ACCOUNT_CATEGORIES = ['Moradia', 'Alimentação', 'Saúde', 'Lazer', 'Assinaturas', 'Serviços / Contas', 'Transporte', 'Educação', 'Outros'];
+const MAX_MONEY_VALUE = 999_999_999.99;
 
 interface FixedExpensesTabProps {
   fixedExpenses: FixedExpense[];
@@ -57,6 +58,8 @@ export default function FixedExpensesTab({
   const monthIdx = MONTH_NAMES.indexOf(currentMonthName.toUpperCase());
   const monthNumber = monthIdx !== -1 ? monthIdx + 1 : 1;
   const year = currentYear || 2026;
+  const daysInMonth = new Date(year, monthNumber, 0).getDate();
+  const normalizeDueDay = (dayText: string) => Math.min(daysInMonth, Math.max(1, Number(dayText)));
 
   const handleAddSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -64,13 +67,13 @@ export default function FixedExpensesTab({
       setValidationError('Por favor, digite o nome da conta.');
       return;
     }
-    const val = parseFloat(newValue);
-    if (isNaN(val) || val <= 0) {
-      setValidationError('Por favor, informe um valor válido maior que zero.');
+    const val = Number(newValue);
+    if (!Number.isFinite(val) || val <= 0 || val > MAX_MONEY_VALUE) {
+      setValidationError('Informe um valor entre R$ 0,01 e R$ 999.999.999,99.');
       return;
     }
-    const dueDateStr = dueDay ? `${year}-${String(monthNumber).padStart(2, '0')}-${String(dueDay).padStart(2, '0')}` : undefined;
-    onAddFixedExpense(newName.trim(), val, dueDateStr, category);
+    const dueDateStr = dueDay ? `${year}-${String(monthNumber).padStart(2, '0')}-${String(normalizeDueDay(dueDay)).padStart(2, '0')}` : undefined;
+    onAddFixedExpense(newName.trim(), Math.round(val * 100) / 100, dueDateStr, category);
     setNewName('');
     setNewValue('');
     setDueDay('');
@@ -98,11 +101,11 @@ export default function FixedExpensesTab({
 
   const handleSaveEdit = (id: string) => {
     if (!editName.trim()) return;
-    const val = parseFloat(editValue);
-    if (isNaN(val) || val < 0) return;
+    const val = Number(editValue);
+    if (!Number.isFinite(val) || val < 0 || val > MAX_MONEY_VALUE) return;
 
-    const dueDateStr = editDueDay ? `${year}-${String(monthNumber).padStart(2, '0')}-${String(editDueDay).padStart(2, '0')}` : undefined;
-    onUpdateFixedExpense(id, editName.trim(), val, dueDateStr, editCategory);
+    const dueDateStr = editDueDay ? `${year}-${String(monthNumber).padStart(2, '0')}-${String(normalizeDueDay(editDueDay)).padStart(2, '0')}` : undefined;
+    onUpdateFixedExpense(id, editName.trim(), Math.round(val * 100) / 100, dueDateStr, editCategory);
     setEditingId(null);
   };
 
@@ -118,17 +121,17 @@ export default function FixedExpensesTab({
       <div className="bg-gradient-to-br from-rose-500 to-pink-600 rounded-2xl p-6 text-white shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-6" id="fixed_expenses_banner">
         <div>
           <span className="text-rose-100/90 text-xs font-bold uppercase tracking-widest block mb-1">Contas Fixas do Mês</span>
-          <h2 className="font-display text-3xl font-bold">
+          <h2 className="privacy-value font-display text-3xl font-bold">
             R$ {totalFixed.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
           </h2>
           <div className="text-rose-100 text-xs mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1">
             <span className="flex items-center gap-1">
               <Check className="w-3.5 h-3.5 bg-emerald-500/30 p-0.5 rounded-full" />
-              Pago: <strong>R$ {totalPaid.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</strong>
+              Pago: <strong className="privacy-value">R$ {totalPaid.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</strong>
             </span>
             <span className="flex items-center gap-1">
               <span className="w-2 h-2 rounded-full bg-rose-300" />
-              Pendente: <strong>R$ {totalUnpaid.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</strong>
+              Pendente: <strong className="privacy-value">R$ {totalUnpaid.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</strong>
             </span>
           </div>
         </div>
@@ -239,6 +242,8 @@ export default function FixedExpensesTab({
                             <input
                               type="number"
                               step="0.01"
+                              min="0"
+                              max={MAX_MONEY_VALUE}
                               value={editValue}
                               onChange={(e) => setEditValue(e.target.value)}
                               className="pl-7 pr-2 py-1.5 w-full bg-white border border-slate-200 focus:border-rose-500 rounded-lg text-xs font-semibold text-slate-800 outline-none text-right font-mono"
@@ -264,7 +269,7 @@ export default function FixedExpensesTab({
                             className="bg-white border border-slate-200 focus:border-rose-500 rounded-lg text-xs font-semibold p-1.5 outline-none text-slate-700 w-28 shrink-0 cursor-pointer"
                           >
                             <option value="">Sem venc.</option>
-                            {Array.from({ length: 31 }, (_, i) => i + 1).map((day) => (
+                            {Array.from({ length: daysInMonth }, (_, i) => i + 1).map((day) => (
                               <option key={day} value={day}>Dia {day}</option>
                             ))}
                           </select>
@@ -402,6 +407,8 @@ export default function FixedExpensesTab({
                 <input
                   type="number"
                   step="0.01"
+                  min="0.01"
+                  max={MAX_MONEY_VALUE}
                   required
                   placeholder="0,00"
                   value={newValue}
@@ -435,7 +442,7 @@ export default function FixedExpensesTab({
                 className="w-full bg-slate-50 border border-slate-200 focus:border-rose-500 focus:ring-1 focus:ring-rose-500 rounded-lg text-xs py-2 px-3 font-semibold outline-none text-slate-700 cursor-pointer"
               >
                 <option value="">Sem data de vencimento</option>
-                {Array.from({ length: 31 }, (_, i) => i + 1).map((day) => (
+                {Array.from({ length: daysInMonth }, (_, i) => i + 1).map((day) => (
                   <option key={day} value={day}>Dia {day}</option>
                 ))}
               </select>

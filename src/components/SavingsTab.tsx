@@ -155,7 +155,7 @@ export default function SavingsTab({
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-5">
           <div>
             <span className="text-teal-100 text-xs font-bold uppercase tracking-widest">Guardado nas caixinhas</span>
-            <h2 className="font-display text-3xl font-bold mt-1">{formatCurrency(totalSaved)}</h2>
+            <h2 className="privacy-value font-display text-3xl font-bold mt-1">{formatCurrency(totalSaved)}</h2>
             <p className="text-teal-100 text-xs mt-1.5">Separe objetivos e acompanhe cada avanço com clareza.</p>
           </div>
           <div className="flex items-center gap-3">

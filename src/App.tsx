@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { lazy, Suspense, useState, useEffect, useRef } from 'react';
 import {
   TrendingUp,
   CreditCard,
@@ -12,18 +12,24 @@ import {
   Plus,
   Settings,
   Calendar,
-  Wallet
+  Wallet,
+  Eye,
+  EyeOff,
+  Search,
+  ArrowRight
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 // Imports of custom sub-components
 import MetricCard from './components/MetricCard';
-import FinancialCharts from './components/FinancialCharts';
-import IncomeTab from './components/IncomeTab';
-import FixedExpensesTab from './components/FixedExpensesTab';
-import SavingsTab from './components/SavingsTab';
-import VariableExpensesTab from './components/VariableExpensesTab';
-import SettingsTab from './components/SettingsTab';
+import MonthComparison from './components/MonthComparison';
+
+const FinancialCharts = lazy(() => import('./components/FinancialCharts'));
+const IncomeTab = lazy(() => import('./components/IncomeTab'));
+const FixedExpensesTab = lazy(() => import('./components/FixedExpensesTab'));
+const SavingsTab = lazy(() => import('./components/SavingsTab'));
+const VariableExpensesTab = lazy(() => import('./components/VariableExpensesTab'));
+const SettingsTab = lazy(() => import('./components/SettingsTab'));
 
 // Firebase integration helpers
 import {
@@ -37,8 +43,6 @@ import {
   googleSignIn,
   logoutGoogle
 } from './lib/firebase';
-
-import { exportBudgetToGoogleSheets } from './lib/googleSheets';
 
 // Types import
 import { Income, FixedExpense, SavingGoal, VariableExpense, MonthlyBudget } from './types';
@@ -76,6 +80,70 @@ const NAV_TABS: Array<{ id: ActiveTab; label: string; mobileLabel: string; icon:
   { id: 'settings', label: 'Configurações', mobileLabel: 'Ajustes', icon: Settings }
 ];
 
+const summarizeBudget = (monthlyBudget: MonthlyBudget) => {
+  const income = monthlyBudget.incomes.reduce((sum, item) => sum + item.value, 0);
+  const fixed = monthlyBudget.fixedExpenses.reduce((sum, item) => sum + item.value, 0);
+  const variable = monthlyBudget.variableExpenses.reduce((sum, item) => sum + item.value, 0);
+  const savings = monthlyBudget.savingGoals.reduce((sum, item) => sum + item.current, 0);
+
+  return {
+    income,
+    expenses: fixed + variable,
+    savings,
+    balance: income - fixed - variable - savings
+  };
+};
+
+const formatBudgetLabel = (monthlyBudget: MonthlyBudget) => {
+  const month = monthlyBudget.month.charAt(0) + monthlyBudget.month.slice(1).toLowerCase();
+  return `${month} de ${monthlyBudget.year}`;
+};
+
+const getMonthDateBounds = (monthKey: string) => {
+  const [yearText, monthText] = monthKey.split('-');
+  const year = Number(yearText);
+  const month = Number(monthText);
+  const lastDay = new Date(year, month, 0).getDate();
+  const min = `${yearText}-${monthText}-01`;
+  const max = `${yearText}-${monthText}-${String(lastDay).padStart(2, '0')}`;
+  const today = new Date();
+  const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+  const todayDate = `${todayKey}-${String(today.getDate()).padStart(2, '0')}`;
+
+  return { min, max, defaultDate: todayKey === monthKey ? todayDate : min };
+};
+
+const moveDateToMonth = (date: string | undefined, year: number, month: number) => {
+  if (!date) return undefined;
+  const day = Number(date.split('-')[2]);
+  if (!Number.isInteger(day) || day < 1) return undefined;
+  const lastDay = new Date(year, month, 0).getDate();
+  return `${year}-${String(month).padStart(2, '0')}-${String(Math.min(day, lastDay)).padStart(2, '0')}`;
+};
+
+const mergeBudgetRecords = (
+  localBudgets: Record<string, MonthlyBudget>,
+  cloudBudgets: Record<string, MonthlyBudget>
+) => {
+  const merged: Record<string, MonthlyBudget> = { ...cloudBudgets };
+
+  Object.entries(localBudgets).forEach(([key, localBudget]) => {
+    const cloudBudget = cloudBudgets[key];
+    if (!cloudBudget) {
+      merged[key] = localBudget;
+      return;
+    }
+
+    const localUpdatedAt = Date.parse(localBudget.updatedAt || '');
+    const cloudUpdatedAt = Date.parse(cloudBudget.updatedAt || '');
+    if (Number.isFinite(localUpdatedAt) && (!Number.isFinite(cloudUpdatedAt) || localUpdatedAt > cloudUpdatedAt)) {
+      merged[key] = localBudget;
+    }
+  });
+
+  return merged;
+};
+
 export default function App() {
   // Current tab active: 'overview' | 'incomes' | 'fixed' | 'savings' | 'variables' | 'settings'
   const [activeTab, setActiveTab] = useState<ActiveTab>('overview');
@@ -83,6 +151,9 @@ export default function App() {
   // Help Modal State
   const [showHelp, setShowHelp] = useState(false);
   const [showDemoConfirm, setShowDemoConfirm] = useState(false);
+  const [showCommandPalette, setShowCommandPalette] = useState(false);
+  const [commandQuery, setCommandQuery] = useState('');
+  const [privacyMode, setPrivacyMode] = useState(() => localStorage.getItem('charles_financial_privacy_mode') === 'true');
 
   // New Month Modal State
   const [showNewMonthModal, setShowNewMonthModal] = useState(false);
@@ -100,18 +171,38 @@ export default function App() {
   const [quickDate, setQuickDate] = useState('');
   const [quickError, setQuickError] = useState('');
 
+  useEffect(() => {
+    localStorage.setItem('charles_financial_privacy_mode', String(privacyMode));
+  }, [privacyMode]);
+
+  useEffect(() => {
+    const handleKeyboardShortcut = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault();
+        setCommandQuery('');
+        setShowCommandPalette((current) => !current);
+      }
+
+      if (event.key === 'Escape') {
+        setShowCommandPalette(false);
+        setShowHelp(false);
+        setShowDemoConfirm(false);
+        setShowNewMonthModal(false);
+        setShowQuickAddModal(false);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyboardShortcut);
+    return () => window.removeEventListener('keydown', handleKeyboardShortcut);
+  }, []);
+
   // Handler to open and initialize Quick Add modal
   const handleOpenQuickAdd = () => {
-    const today = new Date();
-    const yyyy = today.getFullYear();
-    const mm = String(today.getMonth() + 1).padStart(2, '0');
-    const dd = String(today.getDate()).padStart(2, '0');
-    
     setQuickDesc('');
     setQuickValue('');
     setQuickCategory('Alimentação');
     setQuickIsPaid(true);
-    setQuickDate(`${yyyy}-${mm}-${dd}`);
+    setQuickDate(getMonthDateBounds(currentMonthKey).defaultDate);
     setQuickError('');
     setShowQuickAddModal(true);
   };
@@ -123,17 +214,18 @@ export default function App() {
       setQuickError('Por favor, informe uma descrição.');
       return;
     }
-    const val = parseFloat(quickValue);
-    if (isNaN(val) || val <= 0) {
+    const val = Number(quickValue);
+    if (!Number.isFinite(val) || val <= 0 || val > 999999999.99) {
       setQuickError('Por favor, informe um valor maior que zero.');
       return;
     }
-    if (!quickDate) {
-      setQuickError('Por favor, escolha uma data.');
+    const { min, max } = getMonthDateBounds(currentMonthKey);
+    if (!quickDate || quickDate < min || quickDate > max) {
+      setQuickError(`Escolha uma data entre ${min.split('-').reverse().join('/')} e ${max.split('-').reverse().join('/')}.`);
       return;
     }
 
-    handleAddVariableExpense(quickDesc, quickCategory, val, quickDate, quickIsPaid);
+    handleAddVariableExpense(quickDesc, quickCategory, Math.round(val * 100) / 100, quickDate, quickIsPaid);
     setShowQuickAddModal(false);
   };
 
@@ -251,6 +343,7 @@ export default function App() {
       (user, token) => {
         setGoogleUser(user);
         setGoogleToken(token);
+        void handleRetryDb();
       },
       () => {
         setGoogleUser(null);
@@ -268,6 +361,7 @@ export default function App() {
       if (result) {
         setGoogleUser(result.user);
         setGoogleToken(result.accessToken);
+        void handleRetryDb();
       }
     } catch (err: any) {
       console.error("Failed to connect Google account:", err);
@@ -306,6 +400,7 @@ export default function App() {
       if (!b) {
         throw new Error("Nenhum orçamento encontrado para o mês selecionado.");
       }
+      const { exportBudgetToGoogleSheets } = await import('./lib/googleSheets');
       const result = await exportBudgetToGoogleSheets(b, googleToken);
       setExportSuccessUrl(result.spreadsheetUrl);
     } catch (err: any) {
@@ -328,13 +423,15 @@ export default function App() {
         const dbBudgets = await loadBudgetsFromFirebase();
 
         if (dbBudgets && Object.keys(dbBudgets).length > 0) {
-          setBudgets(dbBudgets);
-          const keys = Object.keys(dbBudgets);
+          const mergedBudgets = mergeBudgetRecords(budgets, dbBudgets);
+          prevBudgetsRef.current = dbBudgets;
+          setBudgets(mergedBudgets);
+          const keys = Object.keys(mergedBudgets);
           keys.sort();
           setCurrentMonthKey(keys[keys.length - 1]);
-          prevBudgetsRef.current = dbBudgets;
         } else if (dbBudgets) {
           await bulkSaveBudgetsToFirebase(budgets);
+          prevBudgetsRef.current = budgets;
         }
         setSyncStatus('synced');
         setDbError(null);
@@ -360,15 +457,17 @@ export default function App() {
           const dbBudgets = await loadBudgetsFromFirebase();
 
           if (dbBudgets && Object.keys(dbBudgets).length > 0) {
-            setBudgets(dbBudgets);
+            const mergedBudgets = mergeBudgetRecords(budgets, dbBudgets);
+            prevBudgetsRef.current = dbBudgets;
+            setBudgets(mergedBudgets);
             // Select the latest month
-            const keys = Object.keys(dbBudgets);
+            const keys = Object.keys(mergedBudgets);
             keys.sort();
             setCurrentMonthKey(keys[keys.length - 1]);
-            prevBudgetsRef.current = dbBudgets;
           } else if (dbBudgets) {
             // Database is configured but empty. Seed it with current local storage / default budgets
             await bulkSaveBudgetsToFirebase(budgets);
+            prevBudgetsRef.current = budgets;
           }
           setSyncStatus('synced');
           setDbError(null);
@@ -394,7 +493,6 @@ export default function App() {
   // Sync state to Database when budgets changes (excluding initial load)
   useEffect(() => {
     if (isDbLoading) {
-      prevBudgetsRef.current = budgets;
       return;
     }
 
@@ -402,39 +500,45 @@ export default function App() {
       const isFb = isFirebaseConfigured();
       if (isFb) {
         setSyncStatus('syncing');
-        let success = true;
+        try {
+          let success = true;
 
-        const keys = Object.keys(budgets);
-        for (const key of keys) {
-          const prev = prevBudgetsRef.current[key];
-          const curr = budgets[key];
-          if (!prev || JSON.stringify(prev) !== JSON.stringify(curr)) {
-            const saved = await saveBudgetToFirebase(key, curr);
-            if (!saved) success = false;
+          const keys = Object.keys(budgets);
+          for (const key of keys) {
+            const prev = prevBudgetsRef.current[key];
+            const curr = budgets[key];
+            if (!prev || JSON.stringify(prev) !== JSON.stringify(curr)) {
+              const saved = await saveBudgetToFirebase(key, curr);
+              if (!saved) success = false;
+            }
           }
-        }
 
-        // Handle deletions of months
-        const prevKeys = Object.keys(prevBudgetsRef.current);
-        for (const key of prevKeys) {
-          if (!budgets[key]) {
-            const deleted = await deleteBudgetFromFirebase(key);
-            if (!deleted) success = false;
+          // Handle deletions of months
+          const prevKeys = Object.keys(prevBudgetsRef.current);
+          for (const key of prevKeys) {
+            if (!budgets[key]) {
+              const deleted = await deleteBudgetFromFirebase(key);
+              if (!deleted) success = false;
+            }
           }
-        }
 
-        if (success) {
-          setSyncStatus('synced');
-          setDbError(null);
-        } else {
+          if (success) {
+            prevBudgetsRef.current = budgets;
+            setSyncStatus('synced');
+            setDbError(null);
+          } else {
+            setSyncStatus('error');
+            setDbError('Falha ao salvar no Firebase.');
+          }
+        } catch (error) {
+          console.error('Falha ao sincronizar alterações:', error);
           setSyncStatus('error');
-          setDbError("Falha ao salvar no Firebase.");
+          setDbError('As alterações estão salvas neste dispositivo, mas a nuvem não respondeu. Tente sincronizar novamente.');
         }
       }
-      prevBudgetsRef.current = budgets;
     };
 
-    syncToDb();
+    void syncToDb();
   }, [budgets, isDbLoading]);
 
   // Ensure currentMonthKey points to an existing budget
@@ -468,6 +572,7 @@ export default function App() {
     return {
       month: monthName,
       year,
+      updatedAt: new Date().toISOString(),
       incomes: [],
       fixedExpenses: [],
       savingGoals: savingGoals.map(g => ({ ...g, current: 0 })),
@@ -483,7 +588,10 @@ export default function App() {
       const current = prev[currentMonthKey] || createEmptyBudgetStructure(currentMonthKey, budget.month, budget.year);
       return {
         ...prev,
-        [currentMonthKey]: updater(current)
+        [currentMonthKey]: {
+          ...updater(current),
+          updatedAt: new Date().toISOString()
+        }
       };
     });
   };
@@ -493,11 +601,15 @@ export default function App() {
   const fixedTotal = budget.fixedExpenses.reduce((sum, item) => sum + item.value, 0);
   const caixinhasTotal = budget.savingGoals.reduce((sum, item) => sum + item.current, 0);
   const variableTotal = budget.variableExpenses.reduce((sum, item) => sum + item.value, 0);
+  const fixedPaidTotal = budget.fixedExpenses.filter(item => item.isPaid).reduce((sum, item) => sum + item.value, 0);
+  const variablePaidTotal = budget.variableExpenses.filter(item => item.isPaid).reduce((sum, item) => sum + item.value, 0);
   
   // New optimized metrics requested by Charles:
   const balanceForAccounts = totalIn - variableTotal; // Saldo p/ pagar contas (Recebido - Variáveis)
   const remainingBeforeSavings = totalIn - variableTotal - fixedTotal; // Sobra operacional antes das Caixinhas
   const netBalance = totalIn - fixedTotal - caixinhasTotal - variableTotal; // Sobra líquida real final
+  const availableAfterPaid = totalIn - fixedPaidTotal - variablePaidTotal - caixinhasTotal;
+  const pendingCommitments = Math.max(0, (fixedTotal - fixedPaidTotal) + (variableTotal - variablePaidTotal));
   const paidFixedCount = budget.fixedExpenses.filter(item => item.isPaid).length;
   const fixedProgress = budget.fixedExpenses.length > 0
     ? Math.round((paidFixedCount / budget.fixedExpenses.length) * 100)
@@ -506,12 +618,61 @@ export default function App() {
   const savingsProgress = savingTargetTotal > 0
     ? Math.min(100, Math.round((caixinhasTotal / savingTargetTotal) * 100))
     : 0;
+  const priorMonthKeys = Object.keys(budgets).filter(key => key < currentMonthKey).sort();
+  const previousMonthKey = priorMonthKeys.length > 0 ? priorMonthKeys[priorMonthKeys.length - 1] : null;
+  const previousBudget = previousMonthKey ? budgets[previousMonthKey] : null;
+  const currentMonthSummary = summarizeBudget(budget);
+  const previousMonthSummary = previousBudget ? summarizeBudget(previousBudget) : null;
 
   const navigateToTab = (tab: ActiveTab) => {
     setActiveTab(tab);
     window.requestAnimationFrame(() => {
       document.getElementById('tab_contents_container')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
+  };
+
+  const commandItems = [
+    ...NAV_TABS.map(tab => ({
+      id: `navigate-${tab.id}`,
+      label: `Abrir ${tab.label}`,
+      group: 'Navegação',
+      icon: tab.icon,
+      action: () => navigateToTab(tab.id)
+    })),
+    {
+      id: 'quick-expense',
+      label: 'Registrar gasto rápido',
+      group: 'Ação',
+      icon: ShoppingCart,
+      action: handleOpenQuickAdd
+    },
+    {
+      id: 'new-month',
+      label: 'Criar novo mês',
+      group: 'Ação',
+      icon: Plus,
+      action: () => {
+        setNewMonthError('');
+        setShowNewMonthModal(true);
+      }
+    },
+    {
+      id: 'privacy',
+      label: privacyMode ? 'Desativar modo discreto' : 'Ativar modo discreto',
+      group: 'Privacidade',
+      icon: privacyMode ? Eye : EyeOff,
+      action: () => setPrivacyMode(current => !current)
+    }
+  ];
+  const normalizedCommandQuery = commandQuery.trim().toLocaleLowerCase('pt-BR');
+  const filteredCommandItems = commandItems.filter(item =>
+    `${item.label} ${item.group}`.toLocaleLowerCase('pt-BR').includes(normalizedCommandQuery)
+  );
+
+  const runCommand = (action: () => void) => {
+    setShowCommandPalette(false);
+    setCommandQuery('');
+    action();
   };
 
   // --- HANDLER FUNCTIONS ---
@@ -601,9 +762,10 @@ export default function App() {
         ...prev,
         [nextKey]: {
           ...nextBudget,
+          updatedAt: new Date().toISOString(),
           fixedExpenses: [
             ...nextBudget.fixedExpenses,
-            { ...expenseToCopy, id: `fe-${Date.now()}`, isPaid: false }
+            { ...expenseToCopy, id: `fe-${Date.now()}`, isPaid: false, dueDate: moveDateToMonth(expenseToCopy.dueDate, year, month) }
           ]
         }
       };
@@ -766,6 +928,7 @@ export default function App() {
       [initialKey]: {
         month: 'JULHO',
         year: 2026,
+        updatedAt: new Date().toISOString(),
         incomes: [],
         fixedExpenses: INITIAL_FIXED_EXPENSES.map(fe => ({ ...fe, isPaid: false })),
         savingGoals: INITIAL_SAVING_GOALS.map(sg => ({ ...sg, current: 0 })),
@@ -778,7 +941,11 @@ export default function App() {
   };
 
   const handleImportBackup = (importedData: Record<string, MonthlyBudget>) => {
-    setBudgets(importedData);
+    const importedAt = new Date().toISOString();
+    const timestampedData = Object.fromEntries(
+      Object.entries(importedData).map(([key, importedBudget]) => [key, { ...importedBudget, updatedAt: importedAt }])
+    );
+    setBudgets(timestampedData);
     const keys = Object.keys(importedData);
     keys.sort();
     setCurrentMonthKey(keys[keys.length - 1]);
@@ -789,9 +956,9 @@ export default function App() {
   const handleCreateNewMonth = (e: React.FormEvent) => {
     e.preventDefault();
     const monthIdx = MONTH_NAMES.indexOf(newMonthName) + 1;
-    const yearNum = parseInt(newMonthYear);
+    const yearNum = Number(newMonthYear);
 
-    if (isNaN(yearNum) || yearNum < 2000 || yearNum > 2100) {
+    if (!Number.isInteger(yearNum) || yearNum < 2000 || yearNum > 2100) {
       setNewMonthError('Por favor, informe um ano válido (Ex: 2026)');
       return;
     }
@@ -808,17 +975,21 @@ export default function App() {
       // Copy fixed expenses of currently selected month
       nextFixed = budget.fixedExpenses.map(fe => ({
         ...fe,
-        isPaid: false // set as unpaid for the new month
+        isPaid: false,
+        dueDate: moveDateToMonth(fe.dueDate, yearNum, monthIdx)
       }));
     }
 
     const newMonthBudget: MonthlyBudget = {
       month: newMonthName,
       year: yearNum,
+      updatedAt: new Date().toISOString(),
       incomes: [],
       fixedExpenses: nextFixed,
       savingGoals: budget.savingGoals.map(sg => ({ ...sg, current: 0 })),
-      variableExpenses: []
+      variableExpenses: [],
+      customCategories: (budget.customCategories || []).map(category => ({ ...category })),
+      accountCategories: (budget.accountCategories || []).map(category => ({ ...category }))
     };
 
     setBudgets(prev => ({
@@ -833,7 +1004,7 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col antialiased selection:bg-teal-500 selection:text-white pb-28 sm:pb-12" id="app_root_container">
+    <div className={`min-h-screen bg-slate-50 flex flex-col antialiased selection:bg-teal-500 selection:text-white pb-28 sm:pb-12 ${privacyMode ? 'privacy-mode' : ''}`} id="app_root_container">
       {/* Top Professional Header */}
       <header className="sticky top-0 z-40 bg-white/90 backdrop-blur-xl border-b border-white/80 shadow-sm shadow-slate-200/50" id="main_header">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3.5 flex flex-col sm:flex-row items-center justify-between gap-3">
@@ -846,7 +1017,7 @@ export default function App() {
             <div>
               <h1 className="font-display font-bold text-xl text-slate-800 tracking-tight leading-none flex items-center gap-1.5">
                 Controle Financeiro
-                <span className="text-[10px] bg-slate-100 text-slate-600 font-mono py-0.5 px-2 rounded-full font-semibold border border-slate-200">
+                <span className="privacy-exempt text-[10px] bg-slate-100 text-slate-600 font-mono py-0.5 px-2 rounded-full font-semibold border border-slate-200">
                   Charles
                 </span>
               </h1>
@@ -860,7 +1031,7 @@ export default function App() {
                         syncStatus === 'syncing' ? 'bg-amber-500 animate-pulse' :
                         syncStatus === 'synced' ? 'bg-emerald-500' : 'bg-rose-500'
                       }`} />
-                      <span className={`text-[9px] font-bold tracking-wider uppercase font-mono ${
+                      <span className={`privacy-exempt text-[9px] font-bold tracking-wider uppercase font-mono ${
                         syncStatus === 'syncing' ? 'text-amber-600' :
                         syncStatus === 'synced' ? 'text-emerald-600' : 'text-rose-600'
                       }`}>
@@ -916,6 +1087,34 @@ export default function App() {
             >
               <Sparkles className="w-3.5 h-3.5" />
               Demo Completa
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setCommandQuery('');
+                setShowCommandPalette(true);
+              }}
+              className="inline-flex items-center gap-2 p-2 lg:px-3 hover:bg-slate-50 rounded-xl text-slate-500 hover:text-slate-800 transition-colors border border-transparent hover:border-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500"
+              aria-label="Abrir busca rápida"
+              title="Busca rápida (Ctrl+K)"
+              id="command_palette_trigger"
+            >
+              <Search className="w-4.5 h-4.5" aria-hidden="true" />
+              <span className="hidden lg:inline text-[10px] font-bold">Buscar</span>
+              <kbd className="hidden xl:inline privacy-exempt rounded-md border border-slate-200 bg-white px-1.5 py-0.5 text-[9px] font-mono text-slate-400">Ctrl K</kbd>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setPrivacyMode(current => !current)}
+              className={`p-2 rounded-xl transition-colors border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 ${privacyMode ? 'bg-slate-900 text-white border-slate-900' : 'text-slate-400 hover:text-slate-700 hover:bg-slate-50 border-transparent hover:border-slate-100'}`}
+              aria-label={privacyMode ? 'Desativar modo discreto visual' : 'Ativar modo discreto visual'}
+              aria-pressed={privacyMode}
+              title={privacyMode ? 'Mostrar valores na tela' : 'Ocultar valores na tela'}
+              id="privacy_mode_toggle"
+            >
+              {privacyMode ? <EyeOff className="w-4.5 h-4.5" aria-hidden="true" /> : <Eye className="w-4.5 h-4.5" aria-hidden="true" />}
             </button>
 
             <button
@@ -1011,6 +1210,20 @@ export default function App() {
                     {netBalance.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                   </strong>
                   <span className="text-[11px] text-slate-400 mt-1 block">Depois de contas, gastos e Caixinhas</span>
+                  <div className="mt-4 border-t border-white/10 pt-3 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-2">
+                    <div>
+                      <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">Saldo após pagamentos registrados</span>
+                      <span className="block text-[10px] text-slate-500 mt-0.5">Sem descontar os compromissos ainda pendentes</span>
+                    </div>
+                    <div className="sm:text-right">
+                      <strong className={`block font-mono text-sm whitespace-nowrap ${availableAfterPaid >= 0 ? 'text-white' : 'text-rose-300'}`}>
+                        {availableAfterPaid.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                      </strong>
+                      <span className="block text-[9px] text-amber-200/80 mt-0.5">
+                        {pendingCommitments.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} pendentes
+                      </span>
+                    </div>
+                  </div>
                 </div>
                 <div className="rounded-2xl bg-white/[0.06] border border-white/10 p-4">
                   <div className="flex items-center justify-between gap-2">
@@ -1059,7 +1272,7 @@ export default function App() {
                   color="emerald"
                   subtitle="Receitas do mês"
                   details="Soma de todas as receitas e rendas extras registradas neste mês."
-                  onClick={() => setActiveTab('incomes')}
+                  onClick={() => navigateToTab('incomes')}
                   isActive={activeTab === 'incomes'}
                 />
 
@@ -1072,7 +1285,7 @@ export default function App() {
                   color="indigo"
                   subtitle={`${budget.variableExpenses.length} ${budget.variableExpenses.length === 1 ? 'lançamento' : 'lançamentos'}`}
                   details="Compras e despesas que podem variar de um mês para outro."
-                  onClick={() => setActiveTab('variables')}
+                  onClick={() => navigateToTab('variables')}
                   isActive={activeTab === 'variables'}
                 />
 
@@ -1085,7 +1298,7 @@ export default function App() {
                   color="amber"
                   subtitle="Após gastos variáveis"
                   details="Entradas menos gastos variáveis. Mostra quanto ainda pode ser usado para pagar contas fixas."
-                  onClick={() => setActiveTab('overview')}
+                  onClick={() => navigateToTab('overview')}
                   isActive={activeTab === 'overview'}
                 />
 
@@ -1098,7 +1311,7 @@ export default function App() {
                   color="rose"
                   subtitle={`${budget.fixedExpenses.filter(e => e.isPaid).length} de ${budget.fixedExpenses.length} pagas`}
                   details="Total previsto de contas recorrentes, estejam pagas ou pendentes."
-                  onClick={() => setActiveTab('fixed')}
+                  onClick={() => navigateToTab('fixed')}
                   isActive={activeTab === 'fixed'}
                 />
 
@@ -1111,7 +1324,7 @@ export default function App() {
                   color="teal"
                   subtitle="Antes das Caixinhas"
                   details="Entradas menos gastos variáveis e contas fixas, antes de guardar dinheiro nas Caixinhas."
-                  onClick={() => setActiveTab('overview')}
+                  onClick={() => navigateToTab('overview')}
                   isActive={false}
                 />
               </div>
@@ -1133,14 +1346,14 @@ export default function App() {
                   color="teal"
                   subtitle={`${budget.savingGoals.length} ${budget.savingGoals.length === 1 ? 'meta ativa' : 'metas ativas'}`}
                   details="Total que já foi guardado nas suas metas neste mês."
-                  onClick={() => setActiveTab('savings')}
+                  onClick={() => navigateToTab('savings')}
                   isActive={activeTab === 'savings'}
                 />
 
                 <button
                   type="button"
                   id="metric-balance"
-                  onClick={() => setActiveTab('overview')}
+                  onClick={() => navigateToTab('overview')}
                   aria-label={`Saldo final. ${netBalance.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}. Resultado depois de contas, gastos e Caixinhas.`}
                   className={`min-h-32 p-3.5 sm:p-4 rounded-2xl border flex flex-col justify-between text-left transition-all cursor-pointer hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-500 focus-visible:ring-offset-2 ${
                     activeTab === 'overview' ? 'ring-2 ring-slate-500/20' : ''
@@ -1170,6 +1383,15 @@ export default function App() {
               </div>
             </div>
           </section>
+
+          {previousBudget && previousMonthSummary && (
+            <MonthComparison
+              currentLabel={formatBudgetLabel(budget)}
+              previousLabel={formatBudgetLabel(previousBudget)}
+              current={currentMonthSummary}
+              previous={previousMonthSummary}
+            />
+          )}
 
         {/* Tab Navigation Menu */}
         <section className="hidden sm:flex sticky top-[76px] z-30 bg-white/90 backdrop-blur-xl p-1.5 rounded-2xl border border-white shadow-lg shadow-slate-200/50 gap-1" id="tab_navigation">
@@ -1206,6 +1428,14 @@ export default function App() {
               exit={{ opacity: 0, y: -12 }}
               transition={{ duration: 0.25 }}
             >
+              <Suspense fallback={(
+                <div className="min-h-72 rounded-3xl border border-slate-100 bg-white flex items-center justify-center" role="status">
+                  <div className="flex items-center gap-3 text-sm font-semibold text-slate-500">
+                    <span className="w-5 h-5 rounded-full border-2 border-slate-200 border-t-teal-500 animate-spin" aria-hidden="true" />
+                    Carregando esta área…
+                  </div>
+                </div>
+              )}>
               {activeTab === 'overview' && (
                 <FinancialCharts
                   totalIn={totalIn}
@@ -1273,6 +1503,8 @@ export default function App() {
                   customCategories={budget.customCategories || []}
                   onAddCustomCategory={handleAddCustomCategory}
                   onDeleteCustomCategory={handleDeleteCustomCategory}
+                  currentMonthName={budget.month}
+                  currentYear={budget.year}
                 />
               )}
 
@@ -1300,6 +1532,7 @@ export default function App() {
                   onDeleteAccountCategory={handleDeleteAccountCategory}
                 />
               )}
+              </Suspense>
             </motion.div>
           </AnimatePresence>
         </section>
@@ -1331,6 +1564,79 @@ export default function App() {
         })}
       </nav>
 
+      <AnimatePresence>
+        {showCommandPalette && (
+          <div
+            className="fixed inset-0 z-[60] flex items-start justify-center bg-slate-950/55 px-4 pt-[12vh] backdrop-blur-sm"
+            onMouseDown={() => setShowCommandPalette(false)}
+            id="command_palette_overlay"
+          >
+            <motion.div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="command-palette-title"
+              initial={{ opacity: 0, scale: 0.97, y: -12 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.97, y: -12 }}
+              onMouseDown={(event) => event.stopPropagation()}
+              className="w-full max-w-xl overflow-hidden rounded-3xl border border-white/80 bg-white shadow-2xl shadow-slate-950/30"
+            >
+              <div className="flex items-center gap-3 border-b border-slate-100 px-5 py-4">
+                <Search className="w-5 h-5 shrink-0 text-teal-600" aria-hidden="true" />
+                <label htmlFor="command-palette-input" className="sr-only" id="command-palette-title">Busca rápida</label>
+                <input
+                  id="command-palette-input"
+                  autoFocus
+                  value={commandQuery}
+                  onChange={(event) => setCommandQuery(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' && filteredCommandItems[0]) {
+                      event.preventDefault();
+                      runCommand(filteredCommandItems[0].action);
+                    }
+                  }}
+                  placeholder="Digite uma tela ou ação…"
+                  className="min-w-0 flex-1 bg-transparent text-sm font-semibold text-slate-800 outline-none placeholder:text-slate-400"
+                />
+                <kbd className="privacy-exempt rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-[9px] font-mono font-bold text-slate-400">ESC</kbd>
+              </div>
+
+              <div className="max-h-[55vh] overflow-y-auto p-2" aria-label="Resultados da busca rápida">
+                {filteredCommandItems.length > 0 ? filteredCommandItems.map(item => {
+                  const Icon = item.icon;
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => runCommand(item.action)}
+                      className="group flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-teal-500"
+                    >
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-600 group-hover:bg-teal-50 group-hover:text-teal-700">
+                        <Icon className="w-4 h-4" aria-hidden="true" />
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm font-bold text-slate-800">{item.label}</span>
+                        <span className="block text-[10px] font-semibold uppercase tracking-wider text-slate-400">{item.group}</span>
+                      </span>
+                      <ArrowRight className="w-4 h-4 shrink-0 text-slate-300 group-hover:text-teal-600" aria-hidden="true" />
+                    </button>
+                  );
+                }) : (
+                  <div className="px-4 py-10 text-center">
+                    <p className="text-sm font-bold text-slate-700">Nenhuma ação encontrada</p>
+                    <p className="mt-1 text-xs text-slate-400">Tente buscar por entradas, gastos, Caixinhas ou ajustes.</p>
+                  </div>
+                )}
+              </div>
+
+              <div className="privacy-exempt border-t border-slate-100 bg-slate-50/80 px-5 py-3 text-[10px] font-medium text-slate-400">
+                Use Tab para navegar · Enter abre o primeiro resultado · Ctrl K alterna
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
       {/* New Month Creation Modal */}
       {showNewMonthModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm" id="new_month_modal_overlay">
@@ -1349,8 +1655,10 @@ export default function App() {
                 Criar Novo Mês
               </h3>
               <button
+                type="button"
                 onClick={() => setShowNewMonthModal(false)}
-                className="text-slate-400 hover:text-slate-600 font-bold text-xs"
+                aria-label="Fechar criação de mês"
+                className="min-w-11 min-h-11 inline-flex items-center justify-center text-slate-400 hover:text-slate-600 font-bold text-xs rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500"
               >
                 ✕
               </button>
@@ -1485,21 +1793,26 @@ export default function App() {
         {showHelp && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm" id="help_modal_overlay">
             <motion.div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="help-modal-title"
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-xl border border-slate-100 flex flex-col justify-between"
+              className="bg-white rounded-2xl max-w-lg max-h-[90vh] overflow-y-auto w-full p-6 shadow-xl border border-slate-100 flex flex-col justify-between"
               id="help_modal_box"
             >
               <div className="space-y-4">
                 <div className="flex justify-between items-center pb-2 border-b border-slate-100">
-                  <h3 className="font-display font-bold text-slate-800 text-lg flex items-center gap-2">
+                  <h3 id="help-modal-title" className="font-display font-bold text-slate-800 text-lg flex items-center gap-2">
                     <Sparkles className="w-5 h-5 text-teal-500" />
                     Como funciona o Dashboard?
                   </h3>
                   <button
+                    type="button"
                     onClick={() => setShowHelp(false)}
-                    className="text-slate-400 hover:text-slate-600 text-sm font-bold p-1 rounded-md cursor-pointer"
+                    aria-label="Fechar ajuda"
+                    className="min-w-11 min-h-11 inline-flex items-center justify-center text-slate-400 hover:text-slate-600 text-sm font-bold rounded-xl cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500"
                   >
                     ✕
                   </button>
@@ -1507,27 +1820,27 @@ export default function App() {
 
                 <div className="space-y-3.5 text-xs text-slate-600 leading-relaxed">
                   <p>
-                    Charles, este dashboard substitui a planilha estática e foi projetado especialmente para suas necessidades:
+                    Charles, o painel organiza o mês em um fluxo simples: entradas, gastos, contas, Caixinhas e saldo final.
                   </p>
                   <ul className="list-disc pl-5 space-y-2 text-slate-600 font-semibold">
                     <li>
-                      <strong className="text-slate-800">Multi-Mês e Ano:</strong> Crie novos meses ou anos usando o botão "Novo Mês" e navegue facilmente entre eles pelo seletor no topo do painel. Cada mês tem dados 100% independentes.
+                      <strong className="text-slate-800">Meses:</strong> use “Novo Mês” para copiar contas, categorias e estrutura das Caixinhas, sempre com os saldos reiniciados.
                     </li>
                     <li>
-                      <strong className="text-slate-800">Entradas Flexíveis:</strong> Registre receitas em até 5 semanas separadas. Cada receita tem descrição, valor, data e categoria (Garçom, Salário, Extra, etc.) calculando totais de semana e do mês automaticamente.
+                      <strong className="text-slate-800">Lançamentos:</strong> registre receitas e gastos; as datas ficam limitadas ao mês selecionado para evitar erros.
                     </li>
                     <li>
-                      <strong className="text-slate-800">Contas Fixas Inteligentes:</strong> Copie contas fixas do mês atual ao criar um novo mês ou use o botão de duplicar (cópia) individual para enviar despesas diretamente ao próximo mês cronológico.
+                      <strong className="text-slate-800">Planejamento:</strong> diferencie o saldo após pagamentos do saldo final projetado com os compromissos pendentes.
                     </li>
                     <li>
-                      <strong className="text-slate-800">Gastos Variáveis com Status:</strong> Registre seus gastos diários escolhendo se já foram "Pagos" ou se estão "Pendentes", podendo mudar este status a qualquer momento clicando no selo na lista.
+                      <strong className="text-slate-800">Caixinhas:</strong> crie metas personalizadas, deposite, resgate e acompanhe o progresso de cada objetivo.
                     </li>
                     <li>
-                      <strong className="text-slate-800">Configurações & Backup:</strong> Vá até a aba Configurações para exportar seus dados de segurança em JSON, importar backups antigos ou realizar limpezas parciais ou totais com segurança.
+                      <strong className="text-slate-800">Atalhos:</strong> pressione Ctrl K para localizar telas e ações; o ícone de olho ativa o modo discreto visual.
                     </li>
                   </ul>
                   <p className="bg-slate-50 p-2.5 rounded-xl border border-slate-100 text-[11px] text-slate-500 font-medium">
-                    💡 <strong>Dica de uso:</strong> Clique em <strong className="text-emerald-700">"Demo Completa"</strong> no topo direito a qualquer momento para ver o mês atual preenchido com dados realistas e entender as análises gráficas instantaneamente!
+                    💡 <strong>Dica:</strong> a “Demo Completa” pede confirmação antes de substituir os lançamentos do mês atual.
                   </p>
                 </div>
               </div>
@@ -1615,6 +1928,8 @@ export default function App() {
                       id="quick-expense-date"
                       type="date"
                       required
+                      min={getMonthDateBounds(currentMonthKey).min}
+                      max={getMonthDateBounds(currentMonthKey).max}
                       value={quickDate}
                       onChange={(e) => setQuickDate(e.target.value)}
                       className="w-full bg-slate-50 border border-slate-200 rounded-lg text-xs py-2 px-3 font-semibold outline-none text-slate-700 font-mono"

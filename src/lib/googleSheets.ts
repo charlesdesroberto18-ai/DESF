@@ -44,12 +44,14 @@ export async function exportBudgetToGoogleSheets(
   const totalFixed = budget.fixedExpenses.reduce((sum, item) => sum + item.value, 0);
   const totalFixedPaid = budget.fixedExpenses.filter(e => e.isPaid).reduce((sum, item) => sum + item.value, 0);
   const totalFixedUnpaid = totalFixed - totalFixedPaid;
-  const totalSavings = budget.savingGoals.reduce((sum, item) => sum + item.target, 0);
+  const totalSavingsTarget = budget.savingGoals.reduce((sum, item) => sum + item.target, 0);
   const totalSavingsSaved = budget.savingGoals.reduce((sum, item) => sum + item.current, 0);
   const totalVariables = budget.variableExpenses.reduce((sum, item) => sum + item.value, 0);
   const totalVariablesPaid = budget.variableExpenses.filter(e => e.isPaid).reduce((sum, item) => sum + item.value, 0);
   const totalVariablesUnpaid = totalVariables - totalVariablesPaid;
-  const netBalance = totalIncomes - totalFixed - totalSavings - totalVariables;
+  // Only money actually deposited in a Caixinha affects the current balance.
+  // The targets remain visible as planning information in the export.
+  const netBalance = totalIncomes - totalFixed - totalSavingsSaved - totalVariables;
 
   // Format Helper
   const fmt = (val: number) => val.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -64,7 +66,8 @@ export async function exportBudgetToGoogleSheets(
     ['Indicador / Categoria', 'Valor (R$)'],
     ['(+) Receitas Totais', totalIncomes],
     ['(-) Contas Fixas (Mensais)', totalFixed],
-    ['(-) Caixinhas (Metas de Poupança)', totalSavings],
+    ['(-) Caixinhas (Valor Guardado)', totalSavingsSaved],
+    ['Meta Mensal das Caixinhas', totalSavingsTarget],
     ['(-) Gastos Variáveis (Diários)', totalVariables],
     ['(=) SOBRA LÍQUIDA (Poupança)', netBalance],
     [],
@@ -123,7 +126,7 @@ export async function exportBudgetToGoogleSheets(
       sg.current
     ]),
     [],
-    ['Total Planejado', totalSavings, totalSavingsSaved]
+    ['Total Planejado', totalSavingsTarget, totalSavingsSaved]
   ];
 
   // Tab: Gastos Variáveis
@@ -149,7 +152,9 @@ export async function exportBudgetToGoogleSheets(
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      valueInputOption: 'USER_ENTERED',
+      // RAW keeps user-provided names and descriptions as literal text, even
+      // when they start with "=", "+", "-" or "@".
+      valueInputOption: 'RAW',
       data: [
         { range: 'Resumo Geral!A1', values: resumoValues },
         { range: 'Entradas (Receitas)!A1', values: receitasValues },

@@ -43,6 +43,7 @@ export interface CustomCategory {
 export interface MonthlyBudget {
   month: string; // e.g., "JULHO"
   year: number; // e.g., 2026
+  updatedAt?: string; // ISO timestamp used to reconcile local and cloud copies
   incomes: Income[];
   fixedExpenses: FixedExpense[];
   savingGoals: SavingGoal[];
