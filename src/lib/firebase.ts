@@ -14,6 +14,7 @@ const firebaseConfig = {
   messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || firebaseConfigJson.messagingSenderId,
   measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || firebaseConfigJson.measurementId,
 };
+const firebaseDisabled = import.meta.env.VITE_DISABLE_FIREBASE === 'true';
 
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId || undefined);
@@ -73,7 +74,7 @@ export const logoutGoogle = async () => {
 };
 
 export const isFirebaseConfigured = () => {
-  return !!firebaseConfig.projectId;
+  return !firebaseDisabled && !!firebaseConfig.projectId;
 };
 
 // Error handler exactly as mandated in the firebase-integration skill:

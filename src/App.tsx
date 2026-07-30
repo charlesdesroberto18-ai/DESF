@@ -55,8 +55,8 @@ const INITIAL_FIXED_EXPENSES: FixedExpense[] = [
 ];
 
 const INITIAL_SAVING_GOALS: SavingGoal[] = [
-  { id: 'sg-1', name: '🔒 Reserva de emergência', target: 300, current: 0, icon: 'shield' },
-  { id: 'sg-2', name: '🛍️ Reserva de compras', target: 200, current: 0, icon: 'shopping-bag' }
+  { id: 'sg-1', name: 'Reserva de emergência', target: 300, current: 0, icon: 'shield', description: 'Proteção para despesas inesperadas.' },
+  { id: 'sg-2', name: 'Compras planejadas', target: 200, current: 0, icon: 'shopping-bag', description: 'Compras importantes sem apertar o mês.' }
 ];
 
 const MONTH_NAMES = [
@@ -261,7 +261,12 @@ export default function App() {
       }
     } catch (err: any) {
       console.error("Failed to connect Google account:", err);
-      setExportError(err?.message || "Falha ao conectar conta Google. Verifique os pop-ups.");
+      const message = String(err?.message || '');
+      setExportError(
+        message.includes('auth/unauthorized-domain')
+          ? 'Este endereço ainda não está autorizado no Firebase. Adicione o domínio da Vercel em Authentication > Settings > Authorized domains.'
+          : message || 'Falha ao conectar a conta Google. Verifique se o navegador bloqueou a janela de acesso.'
+      );
     }
   };
 
@@ -444,13 +449,18 @@ export default function App() {
   };
 
   // Helper to create an empty budget structure for a key
-  const createEmptyBudgetStructure = (key: string, monthName: string, year: number): MonthlyBudget => {
+  const createEmptyBudgetStructure = (
+    key: string,
+    monthName: string,
+    year: number,
+    savingGoals: SavingGoal[] = INITIAL_SAVING_GOALS
+  ): MonthlyBudget => {
     return {
       month: monthName,
       year,
       incomes: [],
       fixedExpenses: [],
-      savingGoals: INITIAL_SAVING_GOALS.map(g => ({ ...g, current: 0 })),
+      savingGoals: savingGoals.map(g => ({ ...g, current: 0 })),
       variableExpenses: [],
       customCategories: [],
       accountCategories: []
@@ -557,7 +567,7 @@ export default function App() {
       const expenseToCopy = currentBudget.fixedExpenses.find(e => e.id === id);
       if (!expenseToCopy) return prev;
 
-      const nextBudget = prev[nextKey] || createEmptyBudgetStructure(nextKey, nextMonthName, year);
+      const nextBudget = prev[nextKey] || createEmptyBudgetStructure(nextKey, nextMonthName, year, currentBudget.savingGoals);
       
       const alreadyHas = nextBudget.fixedExpenses.some(e => e.name.toLowerCase() === expenseToCopy.name.toLowerCase());
       if (alreadyHas) return prev;
@@ -589,17 +599,24 @@ export default function App() {
     }));
   };
 
-  const handleUpdateGoalTarget = (id: string, target: number) => {
+  const handleCreateGoal = (goal: Omit<SavingGoal, 'id' | 'current'>) => {
     updateBudget(prev => ({
       ...prev,
-      savingGoals: prev.savingGoals.map(item => item.id === id ? { ...item, target } : item)
+      savingGoals: [...prev.savingGoals, { ...goal, id: `sg-${Date.now()}`, current: 0 }]
     }));
   };
 
-  const handleResetGoal = (id: string) => {
+  const handleUpdateGoal = (id: string, goal: Omit<SavingGoal, 'id' | 'current'>) => {
     updateBudget(prev => ({
       ...prev,
-      savingGoals: prev.savingGoals.map(item => item.id === id ? { ...item, current: 0 } : item)
+      savingGoals: prev.savingGoals.map(item => item.id === id ? { ...item, ...goal } : item)
+    }));
+  };
+
+  const handleDeleteGoal = (id: string) => {
+    updateBudget(prev => ({
+      ...prev,
+      savingGoals: prev.savingGoals.filter(item => item.id !== id || item.current > 0)
     }));
   };
 
@@ -695,8 +712,8 @@ export default function App() {
         { id: 'fe-7', name: 'Assinatura Xbox', value: 80, isPaid: false }
       ],
       savingGoals: [
-        { id: 'sg-1', name: '🔒 Reserva de emergência', target: 300, current: 150, icon: 'shield' },
-        { id: 'sg-2', name: '🛍️ Reserva de compras', target: 200, current: 80, icon: 'shopping-bag' }
+        { id: 'sg-1', name: 'Reserva de emergência', target: 300, current: 150, icon: 'shield', description: 'Proteção para despesas inesperadas.' },
+        { id: 'sg-2', name: 'Compras planejadas', target: 200, current: 80, icon: 'shopping-bag', description: 'Compras importantes sem apertar o mês.' }
       ],
       variableExpenses: [
         { id: 've-1', description: 'Pastel e caldo de cana feira', category: 'Alimentação', value: 18.50, date: `${prev.year}-${String(MONTH_NAMES.indexOf(prev.month) + 1).padStart(2, '0')}-05`, isPaid: true },
@@ -713,7 +730,7 @@ export default function App() {
       ...prev,
       incomes: [],
       fixedExpenses: INITIAL_FIXED_EXPENSES.map(fe => ({ ...fe, isPaid: false })),
-      savingGoals: INITIAL_SAVING_GOALS.map(sg => ({ ...sg, current: 0 })),
+      savingGoals: prev.savingGoals.map(sg => ({ ...sg, current: 0 })),
       variableExpenses: []
     }));
   };
@@ -775,7 +792,7 @@ export default function App() {
       year: yearNum,
       incomes: [],
       fixedExpenses: nextFixed,
-      savingGoals: INITIAL_SAVING_GOALS.map(sg => ({ ...sg, current: 0 })),
+      savingGoals: budget.savingGoals.map(sg => ({ ...sg, current: 0 })),
       variableExpenses: []
     };
 
@@ -900,31 +917,28 @@ export default function App() {
         <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 mt-6 space-y-6" id="main_layout">
           
           {/* Responsive KPI Metrics Cards Block */}
-          <section className="grid grid-cols-1 lg:grid-cols-12 gap-5" id="kpi_cards_section">
-            
-            {/* Left Column: Operational Flow (5/12 or 9/12 cols) */}
-            <div className="lg:col-span-9 space-y-3" id="operational_flow_section">
+          <section className="space-y-5" id="kpi_cards_section" aria-labelledby="cash-flow-title">
+            <div className="space-y-3" id="operational_flow_section">
               <div className="flex items-center justify-between px-1">
                 <div className="flex items-center gap-1.5">
                   <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">
-                    Fluxo de Caixa Operacional (Passo a Passo)
-                  </span>
+                  <h2 id="cash-flow-title" className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Fluxo financeiro do mês</h2>
                 </div>
                 <span className="text-[10px] font-semibold text-slate-400 hidden md:inline">
-                  Ganhos ➔ Variáveis ➔ Saldo p/ Contas ➔ Contas Fixas ➔ Saldo Livre
+                  Entradas → gastos → contas → metas → saldo
                 </span>
               </div>
               
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3.5" id="operational_flow_grid">
+              <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3.5" id="operational_flow_grid">
                 <MetricCard
                   id="metric-incomes"
                   step={1}
-                  title="TOTAL QUE ENTROU"
+                  title="Entradas"
                   value={totalIn}
                   icon={DollarSign}
                   color="emerald"
-                  subtitle="Ganhos + extras"
+                  subtitle="Receitas do mês"
+                  details="Soma de todas as receitas e rendas extras registradas neste mês."
                   onClick={() => setActiveTab('incomes')}
                   isActive={activeTab === 'incomes'}
                 />
@@ -936,7 +950,8 @@ export default function App() {
                   value={variableTotal}
                   icon={ShoppingCart}
                   color="indigo"
-                  subtitle={`${budget.variableExpenses.length} compras`}
+                  subtitle={`${budget.variableExpenses.length} ${budget.variableExpenses.length === 1 ? 'lançamento' : 'lançamentos'}`}
+                  details="Compras e despesas que podem variar de um mês para outro."
                   onClick={() => setActiveTab('variables')}
                   isActive={activeTab === 'variables'}
                 />
@@ -944,11 +959,12 @@ export default function App() {
                 <MetricCard
                   id="metric-balance-for-accounts"
                   step={3}
-                  title="SALDO P/ CONTAS"
+                  title="Disponível para contas"
                   value={balanceForAccounts}
                   icon={Wallet}
                   color="amber"
-                  subtitle="Livre p/ contas fixas"
+                  subtitle="Após gastos variáveis"
+                  details="Entradas menos gastos variáveis. Mostra quanto ainda pode ser usado para pagar contas fixas."
                   onClick={() => setActiveTab('overview')}
                   isActive={activeTab === 'overview'}
                 />
@@ -961,6 +977,7 @@ export default function App() {
                   icon={CreditCard}
                   color="rose"
                   subtitle={`${budget.fixedExpenses.filter(e => e.isPaid).length} de ${budget.fixedExpenses.length} pagas`}
+                  details="Total previsto de contas recorrentes, estejam pagas ou pendentes."
                   onClick={() => setActiveTab('fixed')}
                   isActive={activeTab === 'fixed'}
                 />
@@ -968,44 +985,44 @@ export default function App() {
                 <MetricCard
                   id="metric-free-balance"
                   step={5}
-                  title="SALDO LIVRE"
+                  title="Saldo antes das metas"
                   value={remainingBeforeSavings}
                   icon={TrendingUp}
                   color="teal"
-                  subtitle="Sobra antes de poupar"
+                  subtitle="Antes das Caixinhas"
+                  details="Entradas menos gastos variáveis e contas fixas, antes de guardar dinheiro nas Caixinhas."
                   onClick={() => setActiveTab('overview')}
                   isActive={false}
                 />
               </div>
             </div>
 
-            {/* Right Column: Savings & Final Net Leftover (3/12 cols) */}
-            <div className="lg:col-span-3 space-y-3" id="savings_leftover_section">
+            <div className="space-y-3" id="savings_leftover_section">
               <div className="flex items-center gap-1.5 px-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-teal-500 animate-pulse" />
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">
-                  Reservas & Sobra Real
-                </span>
+                <span className="w-1.5 h-1.5 rounded-full bg-teal-500" />
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Metas e resultado final</span>
               </div>
               
-              <div className="grid grid-cols-2 lg:grid-cols-1 gap-3.5" id="savings_leftover_grid">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5" id="savings_leftover_grid">
                 <MetricCard
                   id="metric-savings"
                   step={6}
-                  title="CAIXINHAS"
+                  title="Caixinhas"
                   value={caixinhasTotal}
                   icon={PiggyBank}
                   color="teal"
-                  subtitle="Metas de reserva"
+                  subtitle={`${budget.savingGoals.length} ${budget.savingGoals.length === 1 ? 'meta ativa' : 'metas ativas'}`}
+                  details="Total que já foi guardado nas suas metas neste mês."
                   onClick={() => setActiveTab('savings')}
                   isActive={activeTab === 'savings'}
                 />
 
-                {/* NET BALANCE (Sobra Líquida Real) Card */}
-                <div
+                <button
+                  type="button"
                   id="metric-balance"
                   onClick={() => setActiveTab('overview')}
-                  className={`p-3.5 sm:p-4 rounded-2xl border flex flex-col justify-between transition-all cursor-pointer hover:shadow-md ${
+                  aria-label={`Saldo final. ${netBalance.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}. Resultado depois de contas, gastos e Caixinhas.`}
+                  className={`min-h-32 p-3.5 sm:p-4 rounded-2xl border flex flex-col justify-between text-left transition-all cursor-pointer hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-500 focus-visible:ring-offset-2 ${
                     activeTab === 'overview' ? 'ring-2 ring-slate-500/20' : ''
                   } ${
                     netBalance >= 0
@@ -1013,41 +1030,34 @@ export default function App() {
                       : 'bg-rose-600 text-white border-rose-700 shadow-sm shadow-rose-600/10'
                   }`}
                 >
-                  {/* Top Header Row within the Custom Card */}
-                  <div className="flex items-center justify-between w-full border-b border-white/10 pb-1.5 mb-1.5 gap-2">
+                  <div className="flex items-start justify-between w-full border-b border-white/10 pb-2 mb-2 gap-2">
                     <div className="flex items-center gap-1.5 min-w-0">
-                      <span className="inline-flex items-center justify-center w-3.5 h-3.5 text-[8.5px] font-extrabold bg-white/25 text-white rounded-full shrink-0">
+                      <span className="inline-flex items-center justify-center w-4 h-4 text-[9px] font-extrabold bg-white/25 text-white rounded-full shrink-0">
                         7
                       </span>
-                      <span className="text-[9.5px] font-bold text-white/90 uppercase tracking-wider truncate">
-                        SOBRA LÍQUIDA REAL
-                      </span>
+                      <span className="text-[10px] font-bold text-white/90 uppercase tracking-wider">Saldo final</span>
                     </div>
-                    <TrendingUp className={`w-3.5 h-3.5 text-white/90 shrink-0 ${netBalance >= 0 ? '' : 'rotate-180'}`} />
+                    <TrendingUp className={`w-4 h-4 text-white/90 shrink-0 ${netBalance >= 0 ? '' : 'rotate-180'}`} aria-hidden="true" />
                   </div>
 
-                  {/* Value and Subtitle section */}
-                  <div className="space-y-0.5 min-w-0">
-                    <div className="font-display font-bold text-sm sm:text-base md:text-sm lg:text-[13px] xl:text-[15px] 2xl:text-lg text-white tracking-tight font-mono truncate" title={`R$ ${netBalance.toFixed(2)}`}>
-                      R$ {netBalance.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  <div className="space-y-1 min-w-0">
+                    <div className="font-display font-bold text-base xl:text-lg text-white tracking-tight font-mono tabular-nums whitespace-nowrap">
+                      {netBalance.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                     </div>
-                    <span className="text-[9px] sm:text-[10px] text-white/80 font-medium block truncate leading-tight" title={`Livre antes de poupar: R$ ${remainingBeforeSavings.toFixed(2)}`}>
-                      Sobra s/ poupar: R$ {remainingBeforeSavings.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </span>
+                    <span className="text-[10px] sm:text-[11px] text-white/80 font-medium block leading-snug">Depois de gastos, contas e metas</span>
                   </div>
-                </div>
+                </button>
               </div>
             </div>
-
           </section>
 
         {/* Tab Navigation Menu */}
         <section className="bg-white p-1 rounded-2xl border border-slate-100 shadow-sm flex flex-wrap gap-1" id="tab_navigation">
           {[
-            { id: 'overview', label: 'Dashboard Geral', icon: TrendingUp },
-            { id: 'incomes', label: 'Entradas (Semana)', icon: DollarSign },
+            { id: 'overview', label: 'Painel Geral', icon: TrendingUp },
+            { id: 'incomes', label: 'Entradas', icon: DollarSign },
             { id: 'fixed', label: 'Contas Fixas', icon: CreditCard },
-            { id: 'savings', label: 'Caixinhas (Metas)', icon: PiggyBank },
+            { id: 'savings', label: 'Caixinhas', icon: PiggyBank },
             { id: 'variables', label: 'Gastos Variáveis', icon: ShoppingCart },
             { id: 'settings', label: 'Configurações', icon: Settings }
           ].map((tab) => {
@@ -1133,8 +1143,9 @@ export default function App() {
                 <SavingsTab
                   savingGoals={budget.savingGoals}
                   onAddTransactionToGoal={handleAddTransactionToGoal}
-                  onUpdateGoalTarget={handleUpdateGoalTarget}
-                  onResetGoal={handleResetGoal}
+                  onCreateGoal={handleCreateGoal}
+                  onUpdateGoal={handleUpdateGoal}
+                  onDeleteGoal={handleDeleteGoal}
                 />
               )}
 
@@ -1184,13 +1195,16 @@ export default function App() {
       {showNewMonthModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm" id="new_month_modal_overlay">
           <motion.div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="new-month-title"
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-xl border border-slate-100 space-y-4"
             id="new_month_modal_box"
           >
             <div className="flex justify-between items-center pb-2 border-b border-slate-100">
-              <h3 className="font-display font-bold text-slate-800 text-base flex items-center gap-1.5">
+              <h3 id="new-month-title" className="font-display font-bold text-slate-800 text-base flex items-center gap-1.5">
                 <Calendar className="w-5 h-5 text-teal-500" />
                 Criar Novo Mês
               </h3>
@@ -1204,8 +1218,9 @@ export default function App() {
 
             <form onSubmit={handleCreateNewMonth} className="space-y-4">
               <div>
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Escolha o Mês</label>
+                <label htmlFor="new-month-name" className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Escolha o Mês</label>
                 <select
+                  id="new-month-name"
                   value={newMonthName}
                   onChange={(e) => setNewMonthName(e.target.value)}
                   className="w-full bg-slate-50 border border-slate-200 rounded-lg text-xs py-2 px-3 font-semibold outline-none text-slate-700 cursor-pointer"
@@ -1217,8 +1232,9 @@ export default function App() {
               </div>
 
               <div>
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Ano</label>
+                <label htmlFor="new-month-year" className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Ano</label>
                 <input
+                  id="new-month-year"
                   type="number"
                   required
                   placeholder="Ex: 2026"

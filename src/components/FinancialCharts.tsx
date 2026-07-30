@@ -103,6 +103,22 @@ export default function FinancialCharts({
     }))
     .sort((a, b) => b.value - a.value);
 
+  const topVariableCategory = categoriesData[0];
+  const committedPercent = totalIn > 0 ? Math.round(((fixedTotal + variableTotal) / totalIn) * 100) : 0;
+  const quickInsights = [
+    totalIn === 0
+      ? 'Registre uma entrada para liberar a leitura completa do mês.'
+      : balance >= 0
+        ? `Depois de gastos e Caixinhas, o saldo final é ${balance.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}.`
+        : `O planejamento atual está ${Math.abs(balance).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} acima das entradas.`,
+    totalIn > 0
+      ? `${committedPercent}% das entradas estão comprometidas com contas e gastos variáveis.`
+      : 'A proporção entre contas e entradas aparecerá após o primeiro registro.',
+    topVariableCategory
+      ? `${topVariableCategory.name} é a maior categoria variável, com ${topVariableCategory.percentage.toFixed(0)}% desses gastos.`
+      : 'As categorias de gastos aparecerão conforme os lançamentos forem registrados.'
+  ];
+
   const categoryColors: Record<string, string> = {
     'Alimentação': 'bg-amber-500',
     'Transporte / Gasolina': 'bg-blue-500',
@@ -496,31 +512,35 @@ export default function FinancialCharts({
 
           {/* Graphical Multi-Segment Stack Bar */}
           <div className="space-y-4">
-            <div className="h-6 w-full bg-slate-100 rounded-2xl overflow-hidden flex p-0.5 animate-pulse-once" title="Distribuição do Fluxo">
+            <div
+              className="h-6 w-full bg-slate-100 rounded-2xl overflow-hidden flex p-0.5 animate-pulse-once"
+              role="img"
+              aria-label={`Distribuição das entradas: ${percentFixedOfIn.toFixed(1)}% em contas fixas, ${percentVariableOfIn.toFixed(1)}% em gastos variáveis, ${percentSavingsOfIn.toFixed(1)}% em Caixinhas e ${Math.max(0, percentLeftoverOfIn).toFixed(1)}% de saldo.`}
+            >
               {percentFixedOfIn > 0 && (
                 <div
-                  style={{ width: `${percentFixedOfIn}%` }}
+                  style={{ width: `${Math.min(100, Math.max(0, percentFixedOfIn))}%` }}
                   className="bg-rose-500 h-full transition-all duration-500 ease-out first:rounded-l-xl last:rounded-r-xl"
                   title={`Contas Fixas: R$ ${fixedTotal.toFixed(2)} (${percentFixedOfIn.toFixed(1)}%)`}
                 />
               )}
               {percentVariableOfIn > 0 && (
                 <div
-                  style={{ width: `${percentVariableOfIn}%` }}
+                  style={{ width: `${Math.min(100, Math.max(0, percentVariableOfIn))}%` }}
                   className="bg-indigo-500 h-full transition-all duration-500 ease-out first:rounded-l-xl last:rounded-r-xl"
                   title={`Gastos Variáveis: R$ ${variableTotal.toFixed(2)} (${percentVariableOfIn.toFixed(1)}%)`}
                 />
               )}
               {percentSavingsOfIn > 0 && (
                 <div
-                  style={{ width: `${percentSavingsOfIn}%` }}
+                  style={{ width: `${Math.min(100, Math.max(0, percentSavingsOfIn))}%` }}
                   className="bg-teal-500 h-full transition-all duration-500 ease-out first:rounded-l-xl last:rounded-r-xl"
                   title={`Caixinhas: R$ ${caixinhasTotal.toFixed(2)} (${percentSavingsOfIn.toFixed(1)}%)`}
                 />
               )}
               {balance > 0 && (
                 <div
-                  style={{ width: `${percentLeftoverOfIn}%` }}
+                  style={{ width: `${Math.min(100, Math.max(0, percentLeftoverOfIn))}%` }}
                   className="bg-emerald-500 h-full transition-all duration-500 ease-out first:rounded-l-xl last:rounded-r-xl"
                   title={`Sobra Líquida: R$ ${balance.toFixed(2)} (${percentLeftoverOfIn.toFixed(1)}%)`}
                 />
@@ -548,7 +568,7 @@ export default function FinancialCharts({
             <div className="p-3 bg-rose-50/30 border border-rose-100/30 rounded-xl flex items-center justify-between">
               <div className="flex items-center gap-2 min-w-0">
                 <span className="w-3 h-3 rounded-full bg-rose-500 shrink-0" />
-                <span className="text-xs font-bold text-slate-600 truncate">Contas Fixas</span>
+                <span className="text-xs font-bold text-slate-600">Contas fixas</span>
               </div>
               <div className="text-right">
                 <span className="text-xs font-bold font-mono text-slate-800 block">R$ {fixedTotal.toLocaleString('pt-BR')}</span>
@@ -559,7 +579,7 @@ export default function FinancialCharts({
             <div className="p-3 bg-indigo-50/30 border border-indigo-100/30 rounded-xl flex items-center justify-between">
               <div className="flex items-center gap-2 min-w-0">
                 <span className="w-3 h-3 rounded-full bg-indigo-500 shrink-0" />
-                <span className="text-xs font-bold text-slate-600 truncate">Gastos Variáveis</span>
+                <span className="text-xs font-bold text-slate-600">Gastos variáveis</span>
               </div>
               <div className="text-right">
                 <span className="text-xs font-bold font-mono text-slate-800 block">R$ {variableTotal.toLocaleString('pt-BR')}</span>
@@ -570,7 +590,7 @@ export default function FinancialCharts({
             <div className="p-3 bg-teal-50/30 border border-teal-100/30 rounded-xl flex items-center justify-between">
               <div className="flex items-center gap-2 min-w-0">
                 <span className="w-3 h-3 rounded-full bg-teal-500 shrink-0" />
-                <span className="text-xs font-bold text-slate-600 truncate">Caixinhas (Poupar)</span>
+                <span className="text-xs font-bold text-slate-600">Caixinhas</span>
               </div>
               <div className="text-right">
                 <span className="text-xs font-bold font-mono text-slate-800 block">R$ {caixinhasTotal.toLocaleString('pt-BR')}</span>
@@ -583,7 +603,7 @@ export default function FinancialCharts({
             }`}>
               <div className="flex items-center gap-2 min-w-0">
                 <span className={`w-3 h-3 rounded-full shrink-0 ${balance >= 0 ? 'bg-emerald-500' : 'bg-rose-600'}`} />
-                <span className="text-xs font-bold text-slate-600 truncate">Sobra Real</span>
+                <span className="text-xs font-bold text-slate-600">Saldo final</span>
               </div>
               <div className="text-right">
                 <span className={`text-xs font-bold font-mono block ${balance >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
@@ -604,7 +624,7 @@ export default function FinancialCharts({
               <ShoppingCart className="w-5 h-5 text-indigo-500" />
               Gastos Variáveis por Categoria
             </h3>
-            <p className="text-xs text-slate-400">Classificação das suas compras do dia por relevância.</p>
+            <p className="text-xs text-slate-400">Distribuição dos gastos variáveis registrados no mês.</p>
           </div>
 
           <div className="flex-1 mt-4 space-y-3.5 max-h-[220px] overflow-y-auto pr-1">
@@ -621,7 +641,7 @@ export default function FinancialCharts({
                         <div className={`p-1 rounded-lg ${barColor.replace('bg-', 'bg-opacity-10 bg-')} ${textColor}`}>
                           <CatIcon className="w-3.5 h-3.5" />
                         </div>
-                        <span className="font-bold text-slate-700 truncate">{cat.name}</span>
+                        <span className="font-bold text-slate-700 two-line-clamp">{cat.name}</span>
                         <span className="text-[9px] text-slate-400 font-bold bg-slate-50 px-1.5 py-0.5 rounded border border-slate-100 shrink-0">
                           {cat.count} {cat.count === 1 ? 'item' : 'itens'}
                         </span>
@@ -635,7 +655,7 @@ export default function FinancialCharts({
                     </div>
                     
                     {/* Visual Progress Line */}
-                    <div className="h-1.5 w-full bg-slate-50 rounded-full overflow-hidden">
+                    <div className="h-1.5 w-full bg-slate-50 rounded-full overflow-hidden" role="progressbar" aria-label={`${cat.name}: ${cat.percentage.toFixed(0)}% dos gastos variáveis`} aria-valuenow={Math.round(cat.percentage)} aria-valuemin={0} aria-valuemax={100}>
                       <div
                         style={{ width: `${cat.percentage}%` }}
                         className={`h-full rounded-full transition-all duration-500 ease-out ${barColor}`}
@@ -657,6 +677,24 @@ export default function FinancialCharts({
         </div>
 
       </div>
+
+      <section className="bg-slate-900 text-white rounded-2xl p-5 sm:p-6 shadow-sm" aria-labelledby="quick-insights-title">
+        <div className="flex flex-col lg:flex-row lg:items-start gap-4 lg:gap-8">
+          <div className="lg:w-52 shrink-0">
+            <span className="text-[10px] font-bold text-teal-300 uppercase tracking-widest">Leitura automática</span>
+            <h3 id="quick-insights-title" className="font-display font-bold text-lg mt-1">Resumo do mês</h3>
+            <p className="text-xs text-slate-400 mt-1">Gerado pelos valores registrados, sem enviar dados para serviços externos.</p>
+          </div>
+          <ul className="grid grid-cols-1 md:grid-cols-3 gap-3 flex-1">
+            {quickInsights.map((insight, index) => (
+              <li key={insight} className="bg-white/5 border border-white/10 rounded-xl p-3.5 text-xs leading-relaxed text-slate-200 flex gap-2.5">
+                <span className="w-5 h-5 rounded-full bg-teal-500/20 text-teal-300 font-bold flex items-center justify-center shrink-0" aria-hidden="true">{index + 1}</span>
+                {insight}
+              </li>
+            ))}
+          </ul>
+        </div>
+      </section>
 
       {/* NOVO CALENDÁRIO MENSAL INTERATIVO */}
       <div className="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm space-y-4" id="monthly_calendar_card">

@@ -22,6 +22,7 @@ export interface SavingGoal {
   target: number; // monthly target to save
   current: number; // actual saved this month
   icon: string;
+  description?: string;
 }
 
 export interface VariableExpense {

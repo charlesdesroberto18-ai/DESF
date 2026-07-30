@@ -391,7 +391,7 @@ export default function SettingsTab({
         </div>
 
         <p className="text-xs text-slate-500 leading-relaxed">
-          O aplicativo salva automaticamente todas as suas receitas, despesas, caixinhas e observações na nuvem através do <strong>Google Firebase Firestore</strong>. Caso mude de navegador ou limpe os cookies, suas informações estarão seguras e serão carregadas instantaneamente.
+          Seus dados são salvos automaticamente na nuvem e recuperados quando você abre o painel novamente.
         </p>
 
         {isDbConfigured && dbError && (
@@ -426,12 +426,14 @@ export default function SettingsTab({
           </div>
         )}
 
-        <div className="space-y-3 pt-2">
-          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Segurança e Armazenamento</span>
-          <p className="text-[11px] text-slate-500">
-            A infraestrutura de banco de dados utiliza a coleção <code>monthly_budgets</code> no Firestore. Todas as operações de leitura e gravação são protegidas e validadas conforme as regras de segurança do Firebase definidas no arquivo de configuração do projeto.
+        <details className="group rounded-xl bg-slate-50 border border-slate-100 p-3">
+          <summary className="text-[11px] font-bold text-slate-600 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 rounded-lg">
+            Detalhes técnicos
+          </summary>
+          <p className="text-[11px] text-slate-500 leading-relaxed mt-2">
+            Os orçamentos mensais são armazenados na coleção <code>monthly_budgets</code> do Firebase Firestore. O navegador também mantém uma cópia local para ajudar na recuperação dos dados.
           </p>
-        </div>
+        </details>
       </div>
 
       {/* Google Sheets Integration */}
@@ -445,7 +447,7 @@ export default function SettingsTab({
               <h3 className="font-display font-semibold text-slate-800 text-base">
                 Sincronização com o Google Planilhas
               </h3>
-              <p className="text-xs text-slate-400 font-medium">Gere planilhas ricas e estruturadas diretamente na sua conta do Google.</p>
+              <p className="text-xs text-slate-400 font-medium">Crie uma cópia organizada do mês no seu Google Drive.</p>
             </div>
           </div>
           <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
@@ -456,7 +458,7 @@ export default function SettingsTab({
         </div>
 
         <p className="text-xs text-slate-500 leading-relaxed">
-          Exporte todos os dados de <strong className="text-slate-800">{currentMonthName} de {currentYear}</strong> para uma planilha do Google totalmente funcional, organizada com abas de <strong>Resumo Geral, Entradas, Contas Fixas, Caixinhas e Gastos Variáveis</strong>, com formatação profissional.
+          Exporte <strong className="text-slate-800">{currentMonthName} de {currentYear}</strong> com abas para resumo, entradas, contas, Caixinhas e gastos variáveis.
         </p>
 
         {exportError && (
@@ -534,12 +536,14 @@ export default function SettingsTab({
           )}
         </div>
 
-        <div className="space-y-1.5 pt-1 text-[11px] text-slate-400 flex items-start gap-1.5">
-          <Lock className="w-3.5 h-3.5 shrink-0 mt-0.5 text-slate-400" />
-          <span>
-            <strong>Nota de Privacidade:</strong> O acesso é feito com permissão exclusivamente para os arquivos criados por este aplicativo (Google Drive / Sheets). Suas informações são transmitidas diretamente para a API do Google Sheets de forma segura.
-          </span>
-        </div>
+        <details className="group rounded-xl bg-slate-50 border border-slate-100 p-3">
+          <summary className="text-[11px] font-bold text-slate-600 cursor-pointer flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 rounded-lg">
+            <Lock className="w-3.5 h-3.5" /> Detalhes técnicos e privacidade
+          </summary>
+          <p className="text-[11px] text-slate-500 leading-relaxed mt-2">
+            A permissão do Google é limitada aos arquivos criados pelo aplicativo. Os dados são enviados diretamente às APIs do Google Drive e Planilhas.
+          </p>
+        </details>
       </div>
 
       {/* Confirmation Modal for Current Month */}
@@ -558,7 +562,7 @@ export default function SettingsTab({
               Você está prestes a limpar todos os dados do mês de <strong className="text-slate-800">{currentMonthName} / {currentYear}</strong>. Todas as receitas, despesas variáveis e históricos deste mês específico serão excluídos permanentemente.
             </p>
             <div className="bg-slate-50 p-3 rounded-xl text-[10px] text-slate-500 font-mono">
-              Obs: As metas (caixinhas) e contas fixas deste mês serão redefinidas para os valores padrão iniciais, com saldo economizado zerado.
+              As Caixinhas serão mantidas com seus nomes, metas, descrições e ícones; apenas o valor guardado será zerado. As contas fixas voltarão a ficar pendentes.
             </div>
             <div className="flex gap-3 pt-2">
               <button
