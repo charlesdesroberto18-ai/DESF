@@ -38,10 +38,7 @@ import {
   saveBudgetToFirebase,
   deleteBudgetFromFirebase,
   bulkSaveBudgetsToFirebase,
-  testConnection as testFirebaseConnection,
-  initAuth,
-  googleSignIn,
-  logoutGoogle
+  testConnection as testFirebaseConnection
 } from './lib/firebase';
 
 // Types import
@@ -329,87 +326,6 @@ export default function App() {
   const [dbError, setDbError] = useState<string | null>(null);
 
   const prevBudgetsRef = useRef<Record<string, MonthlyBudget>>(budgets);
-
-  // Google Integration States
-  const [googleToken, setGoogleToken] = useState<string | null>(null);
-  const [googleUser, setGoogleUser] = useState<any>(null);
-  const [isExportingSheets, setIsExportingSheets] = useState(false);
-  const [exportSuccessUrl, setExportSuccessUrl] = useState<string | null>(null);
-  const [exportError, setExportError] = useState<string | null>(null);
-
-  // Google Auth lifecycle
-  useEffect(() => {
-    const unsubscribe = initAuth(
-      (user, token) => {
-        setGoogleUser(user);
-        setGoogleToken(token);
-        void handleRetryDb();
-      },
-      () => {
-        setGoogleUser(null);
-        setGoogleToken(null);
-      }
-    );
-    return () => unsubscribe();
-  }, []);
-
-  const handleConnectGoogle = async () => {
-    setExportError(null);
-    setExportSuccessUrl(null);
-    try {
-      const result = await googleSignIn();
-      if (result) {
-        setGoogleUser(result.user);
-        setGoogleToken(result.accessToken);
-        void handleRetryDb();
-      }
-    } catch (err: any) {
-      console.error("Failed to connect Google account:", err);
-      const message = String(err?.message || '');
-      setExportError(
-        message.includes('auth/unauthorized-domain')
-          ? 'Este endereço ainda não está autorizado no Firebase. Adicione o domínio da Vercel em Authentication > Settings > Authorized domains.'
-          : message || 'Falha ao conectar a conta Google. Verifique se o navegador bloqueou a janela de acesso.'
-      );
-    }
-  };
-
-  const handleDisconnectGoogle = async () => {
-    setExportError(null);
-    setExportSuccessUrl(null);
-    try {
-      await logoutGoogle();
-      setGoogleUser(null);
-      setGoogleToken(null);
-    } catch (err: any) {
-      console.error("Failed to disconnect Google:", err);
-    }
-  };
-
-  const handleExportSheets = async () => {
-    if (!googleToken) {
-      setExportError("Você precisa estar conectado à sua conta Google para realizar o export.");
-      return;
-    }
-    setIsExportingSheets(true);
-    setExportError(null);
-    setExportSuccessUrl(null);
-
-    try {
-      const b = budgets[currentMonthKey];
-      if (!b) {
-        throw new Error("Nenhum orçamento encontrado para o mês selecionado.");
-      }
-      const { exportBudgetToGoogleSheets } = await import('./lib/googleSheets');
-      const result = await exportBudgetToGoogleSheets(b, googleToken);
-      setExportSuccessUrl(result.spreadsheetUrl);
-    } catch (err: any) {
-      console.error("Export to Sheets error:", err);
-      setExportError(err?.message || "Ocorreu um erro ao exportar para o Google Planilhas.");
-    } finally {
-      setIsExportingSheets(false);
-    }
-  };
 
   // Handle retry connection to Database (Firebase)
   const handleRetryDb = async () => {
@@ -1022,7 +938,7 @@ export default function App() {
                 </span>
               </h1>
               <div className="flex flex-wrap items-center gap-x-2 mt-1 gap-y-0.5">
-                <p className="text-xs text-slate-400">Transformando planilhas em decisões inteligentes</p>
+                <p className="text-xs text-slate-400">Transformando números em decisões inteligentes</p>
                 {isDbConfigured && (
                   <>
                     <span className="text-slate-300 text-xs hidden sm:inline">•</span>
@@ -1520,13 +1436,6 @@ export default function App() {
                   syncStatus={syncStatus}
                   dbError={dbError}
                   onRetrySync={handleRetryDb}
-                  googleToken={googleToken}
-                  onConnectGoogle={handleConnectGoogle}
-                  onDisconnectGoogle={handleDisconnectGoogle}
-                  isExportingSheets={isExportingSheets}
-                  exportSuccessUrl={exportSuccessUrl}
-                  exportError={exportError}
-                  onExportSheets={handleExportSheets}
                   accountCategories={budget.accountCategories || []}
                   onAddAccountCategory={handleAddAccountCategory}
                   onDeleteAccountCategory={handleDeleteAccountCategory}

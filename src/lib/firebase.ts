@@ -1,6 +1,5 @@
 import { initializeApp } from 'firebase/app';
 import { getFirestore, doc, collection, getDocs, setDoc, deleteDoc, writeBatch, query, limit } from 'firebase/firestore';
-import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, User } from 'firebase/auth';
 import firebaseConfigJson from '../../firebase-applet-config.json';
 import { MonthlyBudget } from '../types';
 
@@ -18,59 +17,6 @@ const firebaseDisabled = import.meta.env.VITE_DISABLE_FIREBASE === 'true';
 
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId || undefined);
-export const auth = getAuth(app);
-
-const provider = new GoogleAuthProvider();
-provider.addScope('https://www.googleapis.com/auth/drive.file');
-
-let isSigningIn = false;
-let cachedAccessToken: string | null = null;
-
-export const initAuth = (
-  onAuthSuccess?: (user: User, token: string | null) => void,
-  onAuthFailure?: () => void
-) => {
-  return onAuthStateChanged(auth, async (user: User | null) => {
-    if (user) {
-      if (cachedAccessToken) {
-        if (onAuthSuccess) onAuthSuccess(user, cachedAccessToken);
-      } else if (!isSigningIn) {
-        cachedAccessToken = null;
-        if (onAuthSuccess) onAuthSuccess(user, null);
-      }
-    } else {
-      cachedAccessToken = null;
-      if (onAuthFailure) onAuthFailure();
-    }
-  });
-};
-
-export const googleSignIn = async (): Promise<{ user: User; accessToken: string } | null> => {
-  try {
-    isSigningIn = true;
-    const result = await signInWithPopup(auth, provider);
-    const credential = GoogleAuthProvider.credentialFromResult(result);
-    if (!credential?.accessToken) {
-      throw new Error('Falha ao obter o token de acesso do Google.');
-    }
-    cachedAccessToken = credential.accessToken;
-    return { user: result.user, accessToken: cachedAccessToken };
-  } catch (error) {
-    console.error('Erro no Google Sign-in:', error);
-    throw error;
-  } finally {
-    isSigningIn = false;
-  }
-};
-
-export const getAccessToken = async (): Promise<string | null> => {
-  return cachedAccessToken;
-};
-
-export const logoutGoogle = async () => {
-  await auth.signOut();
-  cachedAccessToken = null;
-};
 
 export const isFirebaseConfigured = () => {
   return !firebaseDisabled && !!firebaseConfig.projectId;
@@ -97,7 +43,7 @@ const getFirestoreErrorCode = (error: unknown): string => {
 
 const getSafeFirestoreMessage = (code: string): string => {
   if (code.includes('permission-denied') || code.includes('unauthenticated')) {
-    return 'Entre com sua conta Google para sincronizar os dados na nuvem.';
+    return 'O Firebase recusou esta sincronização. Verifique as regras e permissões do projeto.';
   }
   if (code.includes('unavailable') || code.includes('network')) {
     return 'A sincronização está temporariamente indisponível. Seus dados locais foram preservados.';
