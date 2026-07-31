@@ -1,30 +1,15 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Global Safety Net - default deny
     match /{document=**} {
       allow read, write: if false;
     }
 
-    // Helper functions
-    function isValidId(id) {
-      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    function isMonthKey(id) {
+      return id is string && id.matches('^[0-9]{4}-[0-9]{2}$');
     }
 
-    function isSignedIn() {
-      return request.auth != null;
-    }
-
-    function incoming() {
-      return request.resource.data;
-    }
-
-    function existing() {
-      return resource.data;
-    }
-
-    // Validation blueprint for MonthlyBudget
-    function isValidMonthlyBudget(data) {
+    function hasValidBudgetShape(data) {
       return data.keys().hasAll(['month_name', 'year', 'incomes', 'fixed_expenses', 'saving_goals', 'variable_expenses'])
         && data.keys().hasOnly(['month_name', 'year', 'incomes', 'fixed_expenses', 'saving_goals', 'variable_expenses', 'custom_categories', 'account_categories', 'observations', 'updated_at'])
         && data.month_name is string
@@ -40,23 +25,16 @@ service cloud.firestore {
         && data.saving_goals.size() <= 500
         && data.variable_expenses is list
         && data.variable_expenses.size() <= 10000
-        && (!data.keys().hasAny(['custom_categories']) || data.custom_categories is list)
-        && (!data.keys().hasAny(['custom_categories']) || data.custom_categories.size() <= 500)
-        && (!data.keys().hasAny(['account_categories']) || data.account_categories is list)
-        && (!data.keys().hasAny(['account_categories']) || data.account_categories.size() <= 500)
-        && (!data.keys().hasAny(['observations']) || data.observations is map);
+        && (!data.keys().hasAny(['custom_categories']) || (data.custom_categories is list && data.custom_categories.size() <= 500))
+        && (!data.keys().hasAny(['account_categories']) || (data.account_categories is list && data.account_categories.size() <= 500))
+        && (!data.keys().hasAny(['observations']) || data.observations is map)
+        && (!data.keys().hasAny(['updated_at']) || data.updated_at is string);
     }
 
-    // Match rule for monthly_budgets
     match /monthly_budgets/{monthKey} {
-      // Keep the existing shared collection structure, but never expose
-      // financial data to anonymous requests.
-      allow get: if isSignedIn() && isValidId(monthKey);
-      allow list: if isSignedIn();
-      allow create, update: if isSignedIn()
-        && isValidId(monthKey)
-        && isValidMonthlyBudget(incoming());
-      allow delete: if isSignedIn() && isValidId(monthKey);
+      allow get, list: if true;
+      allow create, update: if isMonthKey(monthKey) && hasValidBudgetShape(request.resource.data);
+      allow delete: if isMonthKey(monthKey);
     }
   }
 }
