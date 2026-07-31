@@ -12,7 +12,9 @@ import {
   Check,
   AlertCircle,
   HelpCircle,
-  ShoppingCart
+  ShoppingCart,
+  Sparkles,
+  LoaderCircle
 } from 'lucide-react';
 import { FixedExpense, VariableExpense, SavingGoal, Income } from '../types';
 
@@ -51,6 +53,7 @@ export default function FinancialCharts({
   caixinhasTotal,
   fixedExpenses,
   variableExpenses,
+  savingGoals,
   currentMonthName,
   currentYear,
   incomes,
@@ -95,7 +98,7 @@ export default function FinancialCharts({
 
   const topVariableCategory = categoriesData[0];
   const committedPercent = totalIn > 0 ? Math.round(((fixedTotal + variableTotal) / totalIn) * 100) : 0;
-  const quickInsights = [
+  const localInsights = [
     totalIn === 0
       ? 'Registre uma entrada para liberar a leitura completa do mês.'
       : balance >= 0
@@ -108,6 +111,87 @@ export default function FinancialCharts({
       ? `${topVariableCategory.name} é a maior categoria variável, com ${topVariableCategory.percentage.toFixed(0)}% desses gastos.`
       : 'As categorias de gastos aparecerão conforme os lançamentos forem registrados.'
   ];
+  const [aiInsights, setAiInsights] = useState<string[] | null>(null);
+  const [aiStatus, setAiStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+  const [aiError, setAiError] = useState('');
+  const displayedInsights = aiInsights || localInsights;
+
+  const aiDataFingerprint = JSON.stringify({
+    month: currentMonthName,
+    year: currentYear,
+    totalIn,
+    fixedTotal,
+    variableTotal,
+    caixinhasTotal,
+    incomeCount: incomes.length,
+    fixedExpenseCount: fixedExpenses.length,
+    paidFixedExpenseCount: fixedExpenses.filter((expense) => expense.isPaid).length,
+    variableExpenseCount: variableExpenses.length,
+    savingsGoals: savingGoals.map((goal) => [goal.current, goal.target]),
+    variableCategories: categoriesData.map((category) => [category.name, category.value, category.count]),
+  });
+
+  useEffect(() => {
+    setAiInsights(null);
+    setAiStatus('idle');
+    setAiError('');
+  }, [aiDataFingerprint]);
+
+  const handleGenerateAiInsights = async () => {
+    setAiStatus('loading');
+    setAiError('');
+
+    try {
+      const response = await fetch('/api/monthly-insights', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          month: currentMonthName,
+          year: currentYear,
+          totalIncome: totalIn,
+          fixedExpensesTotal: fixedTotal,
+          variableExpensesTotal: variableTotal,
+          savingsTotal: caixinhasTotal,
+          finalBalance: balance,
+          incomeCount: incomes.length,
+          fixedExpenseCount: fixedExpenses.length,
+          paidFixedExpenseCount: fixedExpenses.filter((expense) => expense.isPaid).length,
+          variableExpenseCount: variableExpenses.length,
+          savingsGoalCount: savingGoals.length,
+          savingsTargetTotal: savingGoals.reduce((sum, goal) => sum + goal.target, 0),
+          variableCategories: categoriesData.slice(0, 8).map((category) => ({
+            name: category.name,
+            value: category.value,
+            count: category.count,
+          })),
+        }),
+      });
+
+      let result: { insights?: unknown; error?: unknown };
+      try {
+        result = await response.json() as { insights?: unknown; error?: unknown };
+      } catch {
+        throw new Error('A análise por IA não está disponível neste ambiente.');
+      }
+      if (!response.ok || !Array.isArray(result.insights) || result.insights.length !== 3) {
+        throw new Error(typeof result.error === 'string' ? result.error : 'A análise por IA não está disponível agora.');
+      }
+
+      const safeInsights = result.insights.filter((item): item is string => typeof item === 'string');
+      if (safeInsights.length !== 3) {
+        throw new Error('A análise por IA não retornou um resultado válido.');
+      }
+
+      setAiInsights(safeInsights);
+      setAiStatus('success');
+    } catch (error) {
+      setAiInsights(null);
+      setAiStatus('error');
+      setAiError(error instanceof Error ? error.message : 'A análise por IA não está disponível agora.');
+    }
+  };
 
   const categoryColors: Record<string, string> = {
     'Alimentação': 'bg-amber-500',
@@ -584,13 +668,42 @@ export default function FinancialCharts({
 
       <section className="bg-slate-900 text-white rounded-2xl p-5 sm:p-6 shadow-sm" aria-labelledby="quick-insights-title">
         <div className="flex flex-col lg:flex-row lg:items-start gap-4 lg:gap-8">
-          <div className="lg:w-52 shrink-0">
-            <span className="text-[10px] font-bold text-teal-300 uppercase tracking-widest">Leitura automática</span>
+          <div className="lg:w-60 shrink-0">
+            <span className="text-[10px] font-bold text-teal-300 uppercase tracking-widest">
+              {aiStatus === 'success' ? 'Análise com IA' : 'Leitura automática'}
+            </span>
             <h3 id="quick-insights-title" className="font-display font-bold text-lg mt-1">Resumo do mês</h3>
-            <p className="text-xs text-slate-400 mt-1">Gerado pelos valores registrados, sem enviar dados para serviços externos.</p>
+            <p className="text-xs text-slate-400 mt-1 leading-relaxed">
+              {aiStatus === 'success'
+                ? 'Gerado pelo DeepSeek V4 Flash com totais e categorias agregadas.'
+                : 'A leitura local permanece disponível. A IA recebe somente totais e categorias, sem nomes ou descrições.'}
+            </p>
+            <button
+              type="button"
+              onClick={handleGenerateAiInsights}
+              disabled={aiStatus === 'loading'}
+              className="mt-3 inline-flex items-center justify-center gap-2 rounded-xl bg-teal-400 text-slate-950 hover:bg-teal-300 disabled:opacity-60 disabled:cursor-wait px-3.5 py-2 text-[11px] font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-200"
+              aria-describedby={aiError ? 'ai-insights-error' : undefined}
+            >
+              {aiStatus === 'loading' ? (
+                <LoaderCircle className="w-3.5 h-3.5 animate-spin" aria-hidden="true" />
+              ) : (
+                <Sparkles className="w-3.5 h-3.5" aria-hidden="true" />
+              )}
+              {aiStatus === 'loading'
+                ? 'Analisando…'
+                : aiStatus === 'success'
+                  ? 'Atualizar análise'
+                  : 'Analisar com IA'}
+            </button>
+            {aiError && (
+              <p id="ai-insights-error" className="text-[10px] text-amber-200 mt-2 leading-relaxed" role="status">
+                {aiError} A leitura local foi mantida.
+              </p>
+            )}
           </div>
           <ul className="grid grid-cols-1 md:grid-cols-3 gap-3 flex-1">
-            {quickInsights.map((insight, index) => (
+            {displayedInsights.map((insight, index) => (
               <li key={insight} className="privacy-value bg-white/5 border border-white/10 rounded-xl p-3.5 text-xs leading-relaxed text-slate-200 flex gap-2.5">
                 <span className="w-5 h-5 rounded-full bg-teal-500/20 text-teal-300 font-bold flex items-center justify-center shrink-0" aria-hidden="true">{index + 1}</span>
                 {insight}
