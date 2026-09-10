@@ -2,25 +2,23 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   TrendingUp,
-  TrendingDown,
-  DollarSign,
   Wallet,
-  PiggyBank,
   Target,
   Percent,
   Calendar,
-  ChevronLeft,
-  ChevronRight,
-  Plus,
   Trash2,
   X,
   StickyNote,
   Check,
   AlertCircle,
   HelpCircle,
-  ShoppingCart
+  ShoppingCart,
+  Sparkles,
+  LoaderCircle
 } from 'lucide-react';
 import { FixedExpense, VariableExpense, SavingGoal, Income } from '../types';
+
+const MAX_MONEY_VALUE = 999_999_999.99;
 
 interface FinancialChartsProps {
   totalIn: number;
@@ -72,11 +70,6 @@ export default function FinancialCharts({
   const totalOutWithCaixinhas = despesasTotais + caixinhasTotal;
   const balance = totalIn - totalOutWithCaixinhas;
 
-  // KPIs Calculations
-  const totalMetaTarget = savingGoals.reduce((sum, g) => sum + g.target, 0);
-  const totalMetaRestante = savingGoals.reduce((sum, g) => sum + Math.max(0, g.target - g.current), 0);
-  const percentMetaConcluida = totalMetaTarget > 0 ? Math.round((caixinhasTotal / totalMetaTarget) * 100) : 0;
-
   // Percentages relative to total income (for allocation stack)
   const percentFixedOfIn = totalIn > 0 ? (fixedTotal / totalIn) * 100 : 0;
   const percentVariableOfIn = totalIn > 0 ? (variableTotal / totalIn) * 100 : 0;
@@ -102,6 +95,103 @@ export default function FinancialCharts({
       percentage: variableTotal > 0 ? (data.value / variableTotal) * 100 : 0
     }))
     .sort((a, b) => b.value - a.value);
+
+  const topVariableCategory = categoriesData[0];
+  const committedPercent = totalIn > 0 ? Math.round(((fixedTotal + variableTotal) / totalIn) * 100) : 0;
+  const localInsights = [
+    totalIn === 0
+      ? 'Registre uma entrada para liberar a leitura completa do mês.'
+      : balance >= 0
+        ? `Depois de gastos e Caixinhas, o saldo final é ${balance.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}.`
+        : `O planejamento atual está ${Math.abs(balance).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} acima das entradas.`,
+    totalIn > 0
+      ? `${committedPercent}% das entradas estão comprometidas com contas e gastos variáveis.`
+      : 'A proporção entre contas e entradas aparecerá após o primeiro registro.',
+    topVariableCategory
+      ? `${topVariableCategory.name} é a maior categoria variável, com ${topVariableCategory.percentage.toFixed(0)}% desses gastos.`
+      : 'As categorias de gastos aparecerão conforme os lançamentos forem registrados.'
+  ];
+  const [aiInsights, setAiInsights] = useState<string[] | null>(null);
+  const [aiStatus, setAiStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+  const [aiError, setAiError] = useState('');
+  const displayedInsights = aiInsights || localInsights;
+
+  const aiDataFingerprint = JSON.stringify({
+    month: currentMonthName,
+    year: currentYear,
+    totalIn,
+    fixedTotal,
+    variableTotal,
+    caixinhasTotal,
+    incomeCount: incomes.length,
+    fixedExpenseCount: fixedExpenses.length,
+    paidFixedExpenseCount: fixedExpenses.filter((expense) => expense.isPaid).length,
+    variableExpenseCount: variableExpenses.length,
+    savingsGoals: savingGoals.map((goal) => [goal.current, goal.target]),
+    variableCategories: categoriesData.map((category) => [category.name, category.value, category.count]),
+  });
+
+  useEffect(() => {
+    setAiInsights(null);
+    setAiStatus('idle');
+    setAiError('');
+  }, [aiDataFingerprint]);
+
+  const handleGenerateAiInsights = async () => {
+    setAiStatus('loading');
+    setAiError('');
+
+    try {
+      const response = await fetch('/api/monthly-insights', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          month: currentMonthName,
+          year: currentYear,
+          totalIncome: totalIn,
+          fixedExpensesTotal: fixedTotal,
+          variableExpensesTotal: variableTotal,
+          savingsTotal: caixinhasTotal,
+          finalBalance: balance,
+          incomeCount: incomes.length,
+          fixedExpenseCount: fixedExpenses.length,
+          paidFixedExpenseCount: fixedExpenses.filter((expense) => expense.isPaid).length,
+          variableExpenseCount: variableExpenses.length,
+          savingsGoalCount: savingGoals.length,
+          savingsTargetTotal: savingGoals.reduce((sum, goal) => sum + goal.target, 0),
+          variableCategories: categoriesData.slice(0, 8).map((category) => ({
+            name: category.name,
+            value: category.value,
+            count: category.count,
+          })),
+        }),
+      });
+
+      let result: { insights?: unknown; error?: unknown };
+      try {
+        result = await response.json() as { insights?: unknown; error?: unknown };
+      } catch {
+        throw new Error('A análise por IA não está disponível neste ambiente.');
+      }
+      if (!response.ok || !Array.isArray(result.insights) || result.insights.length !== 3) {
+        throw new Error(typeof result.error === 'string' ? result.error : 'A análise por IA não está disponível agora.');
+      }
+
+      const safeInsights = result.insights.filter((item): item is string => typeof item === 'string');
+      if (safeInsights.length !== 3) {
+        throw new Error('A análise por IA não retornou um resultado válido.');
+      }
+
+      setAiInsights(safeInsights);
+      setAiStatus('success');
+    } catch (error) {
+      setAiInsights(null);
+      setAiStatus('error');
+      setAiError(error instanceof Error ? error.message : 'A análise por IA não está disponível agora.');
+    }
+  };
 
   const categoryColors: Record<string, string> = {
     'Alimentação': 'bg-amber-500',
@@ -174,6 +264,19 @@ export default function FinancialCharts({
     }
   }, [selectedDay, monthNumber, year, observations]);
 
+  useEffect(() => {
+    if (selectedDay === null) return;
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setSelectedDay(null);
+      }
+    };
+
+    document.addEventListener('keydown', handleEscape);
+    return () => document.removeEventListener('keydown', handleEscape);
+  }, [selectedDay]);
+
   // Handler for type toggling in quick add form
   const handleTypeChange = (type: 'income' | 'expense') => {
     setQuickType(type);
@@ -203,17 +306,19 @@ export default function FinancialCharts({
       return;
     }
 
-    const val = parseFloat(valueInput);
-    if (isNaN(val) || val <= 0) {
-      setModalError('Por favor, informe um valor maior que zero.');
+    const val = Number(valueInput);
+    if (!Number.isFinite(val) || val <= 0 || val > MAX_MONEY_VALUE) {
+      setModalError('Informe um valor entre R$ 0,01 e R$ 999.999.999,99.');
       return;
     }
 
+    const normalizedValue = Math.round(val * 100) / 100;
+
     if (quickType === 'income') {
       const weekNum = Math.min(5, Math.ceil(selectedDay / 7)) as 1 | 2 | 3 | 4 | 5;
-      onAddIncome(desc.trim(), val, categoryInput, selectedDateString, weekNum);
+      onAddIncome(desc.trim(), normalizedValue, categoryInput, selectedDateString, weekNum);
     } else {
-      onAddVariableExpense(desc.trim(), categoryInput, val, selectedDateString, isPaidInput);
+      onAddVariableExpense(desc.trim(), categoryInput, normalizedValue, selectedDateString, isPaidInput);
     }
 
     // Reset simple fields
@@ -380,107 +485,6 @@ export default function FinancialCharts({
         )}
       </div>
 
-      {/* 6 Indicadores Financeiros do Dashboard */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3.5" id="indicators_grid">
-        {/* 1. Receita Total */}
-        <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm flex flex-col justify-between" id="indicator_revenue">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Receita Total</span>
-            <div className="p-1.5 bg-emerald-50 text-emerald-600 rounded-lg">
-              <TrendingUp className="w-4 h-4" />
-            </div>
-          </div>
-          <div>
-            <div className="text-sm font-bold text-slate-800 font-mono">
-              R$ {totalIn.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </div>
-            <span className="text-[9px] text-emerald-600 font-medium mt-1 block">Tudo que entrou no mês</span>
-          </div>
-        </div>
-
-        {/* 2. Despesas Totais */}
-        <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm flex flex-col justify-between" id="indicator_total_expenses">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Despesas Totais</span>
-            <div className="p-1.5 bg-rose-50 text-rose-500 rounded-lg">
-              <TrendingDown className="w-4 h-4" />
-            </div>
-          </div>
-          <div>
-            <div className="text-sm font-bold text-slate-800 font-mono">
-              R$ {despesasTotais.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </div>
-            <span className="text-[9px] text-rose-500 font-medium mt-1 block">Fixas + Variáveis</span>
-          </div>
-        </div>
-
-        {/* 3. Saldo Atual */}
-        <div className={`p-4 rounded-xl border shadow-sm flex flex-col justify-between ${
-          balance >= 0 ? 'bg-white border-slate-100' : 'bg-rose-50/50 border-rose-200'
-        }`} id="indicator_current_balance">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Saldo Atual</span>
-            <div className={`p-1.5 rounded-lg ${balance >= 0 ? 'bg-teal-50 text-teal-600' : 'bg-rose-100 text-rose-600'}`}>
-              <Wallet className="w-4 h-4" />
-            </div>
-          </div>
-          <div>
-            <div className={`text-sm font-bold font-mono ${balance >= 0 ? 'text-slate-800' : 'text-rose-600'}`}>
-              R$ {balance.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </div>
-            <span className="text-[9px] text-slate-400 font-medium mt-1 block">Saldo final livre</span>
-          </div>
-        </div>
-
-        {/* 4. Economia do Mês */}
-        <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm flex flex-col justify-between" id="indicator_economy">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Economia (Mês)</span>
-            <div className="p-1.5 bg-teal-50 text-teal-600 rounded-lg">
-              <PiggyBank className="w-4 h-4" />
-            </div>
-          </div>
-          <div>
-            <div className="text-sm font-bold text-slate-800 font-mono">
-              R$ {caixinhasTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </div>
-            <span className="text-[9px] text-teal-600 font-medium mt-1 block">Guardado nas Caixinhas</span>
-          </div>
-        </div>
-
-        {/* 5. Restante para a Meta */}
-        <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm flex flex-col justify-between" id="indicator_remaining_goal">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Falta para Meta</span>
-            <div className="p-1.5 bg-amber-50 text-amber-600 rounded-lg">
-              <Target className="w-4 h-4" />
-            </div>
-          </div>
-          <div>
-            <div className="text-sm font-bold text-slate-800 font-mono">
-              R$ {totalMetaRestante.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </div>
-            <span className="text-[9px] text-amber-600 font-medium mt-1 block">Para atingir as metas</span>
-          </div>
-        </div>
-
-        {/* 6. Percentual da Meta */}
-        <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm flex flex-col justify-between" id="indicator_goal_percentage">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Meta Concluída</span>
-            <div className="p-1.5 bg-indigo-50 text-indigo-600 rounded-lg">
-              <Percent className="w-4 h-4" />
-            </div>
-          </div>
-          <div>
-            <div className="text-sm font-bold text-slate-800 font-mono">
-              {percentMetaConcluida}%
-            </div>
-            <span className="text-[9px] text-indigo-500 font-medium mt-1 block">Progresso total</span>
-          </div>
-        </div>
-      </div>
-
       {/* SEÇÃO DE ANÁLISE DE FLUXO E DISTRIBUIÇÃO */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5" id="visual_analysis_section">
         
@@ -496,31 +500,35 @@ export default function FinancialCharts({
 
           {/* Graphical Multi-Segment Stack Bar */}
           <div className="space-y-4">
-            <div className="h-6 w-full bg-slate-100 rounded-2xl overflow-hidden flex p-0.5 animate-pulse-once" title="Distribuição do Fluxo">
+            <div
+              className="h-6 w-full bg-slate-100 rounded-2xl overflow-hidden flex p-0.5 animate-pulse-once"
+              role="img"
+              aria-label={`Distribuição das entradas: ${percentFixedOfIn.toFixed(1)}% em contas fixas, ${percentVariableOfIn.toFixed(1)}% em gastos variáveis, ${percentSavingsOfIn.toFixed(1)}% em Caixinhas e ${Math.max(0, percentLeftoverOfIn).toFixed(1)}% de saldo.`}
+            >
               {percentFixedOfIn > 0 && (
                 <div
-                  style={{ width: `${percentFixedOfIn}%` }}
+                  style={{ width: `${Math.min(100, Math.max(0, percentFixedOfIn))}%` }}
                   className="bg-rose-500 h-full transition-all duration-500 ease-out first:rounded-l-xl last:rounded-r-xl"
                   title={`Contas Fixas: R$ ${fixedTotal.toFixed(2)} (${percentFixedOfIn.toFixed(1)}%)`}
                 />
               )}
               {percentVariableOfIn > 0 && (
                 <div
-                  style={{ width: `${percentVariableOfIn}%` }}
+                  style={{ width: `${Math.min(100, Math.max(0, percentVariableOfIn))}%` }}
                   className="bg-indigo-500 h-full transition-all duration-500 ease-out first:rounded-l-xl last:rounded-r-xl"
                   title={`Gastos Variáveis: R$ ${variableTotal.toFixed(2)} (${percentVariableOfIn.toFixed(1)}%)`}
                 />
               )}
               {percentSavingsOfIn > 0 && (
                 <div
-                  style={{ width: `${percentSavingsOfIn}%` }}
+                  style={{ width: `${Math.min(100, Math.max(0, percentSavingsOfIn))}%` }}
                   className="bg-teal-500 h-full transition-all duration-500 ease-out first:rounded-l-xl last:rounded-r-xl"
                   title={`Caixinhas: R$ ${caixinhasTotal.toFixed(2)} (${percentSavingsOfIn.toFixed(1)}%)`}
                 />
               )}
               {balance > 0 && (
                 <div
-                  style={{ width: `${percentLeftoverOfIn}%` }}
+                  style={{ width: `${Math.min(100, Math.max(0, percentLeftoverOfIn))}%` }}
                   className="bg-emerald-500 h-full transition-all duration-500 ease-out first:rounded-l-xl last:rounded-r-xl"
                   title={`Sobra Líquida: R$ ${balance.toFixed(2)} (${percentLeftoverOfIn.toFixed(1)}%)`}
                 />
@@ -548,7 +556,7 @@ export default function FinancialCharts({
             <div className="p-3 bg-rose-50/30 border border-rose-100/30 rounded-xl flex items-center justify-between">
               <div className="flex items-center gap-2 min-w-0">
                 <span className="w-3 h-3 rounded-full bg-rose-500 shrink-0" />
-                <span className="text-xs font-bold text-slate-600 truncate">Contas Fixas</span>
+                <span className="text-xs font-bold text-slate-600">Contas fixas</span>
               </div>
               <div className="text-right">
                 <span className="text-xs font-bold font-mono text-slate-800 block">R$ {fixedTotal.toLocaleString('pt-BR')}</span>
@@ -559,7 +567,7 @@ export default function FinancialCharts({
             <div className="p-3 bg-indigo-50/30 border border-indigo-100/30 rounded-xl flex items-center justify-between">
               <div className="flex items-center gap-2 min-w-0">
                 <span className="w-3 h-3 rounded-full bg-indigo-500 shrink-0" />
-                <span className="text-xs font-bold text-slate-600 truncate">Gastos Variáveis</span>
+                <span className="text-xs font-bold text-slate-600">Gastos variáveis</span>
               </div>
               <div className="text-right">
                 <span className="text-xs font-bold font-mono text-slate-800 block">R$ {variableTotal.toLocaleString('pt-BR')}</span>
@@ -570,7 +578,7 @@ export default function FinancialCharts({
             <div className="p-3 bg-teal-50/30 border border-teal-100/30 rounded-xl flex items-center justify-between">
               <div className="flex items-center gap-2 min-w-0">
                 <span className="w-3 h-3 rounded-full bg-teal-500 shrink-0" />
-                <span className="text-xs font-bold text-slate-600 truncate">Caixinhas (Poupar)</span>
+                <span className="text-xs font-bold text-slate-600">Caixinhas</span>
               </div>
               <div className="text-right">
                 <span className="text-xs font-bold font-mono text-slate-800 block">R$ {caixinhasTotal.toLocaleString('pt-BR')}</span>
@@ -583,7 +591,7 @@ export default function FinancialCharts({
             }`}>
               <div className="flex items-center gap-2 min-w-0">
                 <span className={`w-3 h-3 rounded-full shrink-0 ${balance >= 0 ? 'bg-emerald-500' : 'bg-rose-600'}`} />
-                <span className="text-xs font-bold text-slate-600 truncate">Sobra Real</span>
+                <span className="text-xs font-bold text-slate-600">Saldo final</span>
               </div>
               <div className="text-right">
                 <span className={`text-xs font-bold font-mono block ${balance >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
@@ -604,7 +612,7 @@ export default function FinancialCharts({
               <ShoppingCart className="w-5 h-5 text-indigo-500" />
               Gastos Variáveis por Categoria
             </h3>
-            <p className="text-xs text-slate-400">Classificação das suas compras do dia por relevância.</p>
+            <p className="text-xs text-slate-400">Distribuição dos gastos variáveis registrados no mês.</p>
           </div>
 
           <div className="flex-1 mt-4 space-y-3.5 max-h-[220px] overflow-y-auto pr-1">
@@ -621,7 +629,7 @@ export default function FinancialCharts({
                         <div className={`p-1 rounded-lg ${barColor.replace('bg-', 'bg-opacity-10 bg-')} ${textColor}`}>
                           <CatIcon className="w-3.5 h-3.5" />
                         </div>
-                        <span className="font-bold text-slate-700 truncate">{cat.name}</span>
+                        <span className="font-bold text-slate-700 two-line-clamp">{cat.name}</span>
                         <span className="text-[9px] text-slate-400 font-bold bg-slate-50 px-1.5 py-0.5 rounded border border-slate-100 shrink-0">
                           {cat.count} {cat.count === 1 ? 'item' : 'itens'}
                         </span>
@@ -635,7 +643,7 @@ export default function FinancialCharts({
                     </div>
                     
                     {/* Visual Progress Line */}
-                    <div className="h-1.5 w-full bg-slate-50 rounded-full overflow-hidden">
+                    <div className="h-1.5 w-full bg-slate-50 rounded-full overflow-hidden" role="progressbar" aria-label={`${cat.name}: ${cat.percentage.toFixed(0)}% dos gastos variáveis`} aria-valuenow={Math.round(cat.percentage)} aria-valuemin={0} aria-valuemax={100}>
                       <div
                         style={{ width: `${cat.percentage}%` }}
                         className={`h-full rounded-full transition-all duration-500 ease-out ${barColor}`}
@@ -657,6 +665,53 @@ export default function FinancialCharts({
         </div>
 
       </div>
+
+      <section className="bg-slate-900 text-white rounded-2xl p-5 sm:p-6 shadow-sm" aria-labelledby="quick-insights-title">
+        <div className="flex flex-col lg:flex-row lg:items-start gap-4 lg:gap-8">
+          <div className="lg:w-60 shrink-0">
+            <span className="text-[10px] font-bold text-teal-300 uppercase tracking-widest">
+              {aiStatus === 'success' ? 'Análise com IA' : 'Leitura automática'}
+            </span>
+            <h3 id="quick-insights-title" className="font-display font-bold text-lg mt-1">Resumo do mês</h3>
+            <p className="text-xs text-slate-400 mt-1 leading-relaxed">
+              {aiStatus === 'success'
+                ? 'Gerado pelo DeepSeek V4 Flash com totais e categorias agregadas.'
+                : 'A leitura local permanece disponível. A IA recebe somente totais e categorias, sem nomes ou descrições.'}
+            </p>
+            <button
+              type="button"
+              onClick={handleGenerateAiInsights}
+              disabled={aiStatus === 'loading'}
+              className="mt-3 inline-flex items-center justify-center gap-2 rounded-xl bg-teal-400 text-slate-950 hover:bg-teal-300 disabled:opacity-60 disabled:cursor-wait px-3.5 py-2 text-[11px] font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-200"
+              aria-describedby={aiError ? 'ai-insights-error' : undefined}
+            >
+              {aiStatus === 'loading' ? (
+                <LoaderCircle className="w-3.5 h-3.5 animate-spin" aria-hidden="true" />
+              ) : (
+                <Sparkles className="w-3.5 h-3.5" aria-hidden="true" />
+              )}
+              {aiStatus === 'loading'
+                ? 'Analisando…'
+                : aiStatus === 'success'
+                  ? 'Atualizar análise'
+                  : 'Analisar com IA'}
+            </button>
+            {aiError && (
+              <p id="ai-insights-error" className="text-[10px] text-amber-200 mt-2 leading-relaxed" role="status">
+                {aiError} A leitura local foi mantida.
+              </p>
+            )}
+          </div>
+          <ul className="grid grid-cols-1 md:grid-cols-3 gap-3 flex-1">
+            {displayedInsights.map((insight, index) => (
+              <li key={insight} className="privacy-value bg-white/5 border border-white/10 rounded-xl p-3.5 text-xs leading-relaxed text-slate-200 flex gap-2.5">
+                <span className="w-5 h-5 rounded-full bg-teal-500/20 text-teal-300 font-bold flex items-center justify-center shrink-0" aria-hidden="true">{index + 1}</span>
+                {insight}
+              </li>
+            ))}
+          </ul>
+        </div>
+      </section>
 
       {/* NOVO CALENDÁRIO MENSAL INTERATIVO */}
       <div className="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm space-y-4" id="monthly_calendar_card">
@@ -698,12 +753,27 @@ export default function FinancialCharts({
               const hasIncomes = cell.incomesSum > 0;
               const hasExpenses = cell.expensesSum > 0;
               const hasObs = cell.hasObservation;
+              const dayAriaLabel = [
+                `${cell.day} de ${currentMonthName.toLowerCase()} de ${currentYear}`,
+                hasIncomes
+                  ? `Entradas de ${cell.incomesSum!.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`
+                  : 'Sem entradas',
+                hasExpenses
+                  ? `Saídas de ${cell.expensesSum!.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`
+                  : 'Sem saídas',
+                cell.hasUnpaidBills ? 'Há contas pendentes' : '',
+                hasObs ? 'Possui observação' : '',
+                'Abrir detalhes do dia'
+              ].filter(Boolean).join('. ');
 
               return (
-                <div
+                <button
+                  type="button"
                   key={cell.key}
                   onClick={() => setSelectedDay(cell.day!)}
-                  className={`bg-white min-h-[72px] md:min-h-[90px] p-2 hover:bg-slate-50/70 transition-all cursor-pointer flex flex-col justify-between group relative ${
+                  aria-label={dayAriaLabel}
+                  aria-current={cell.isToday ? 'date' : undefined}
+                  className={`bg-white min-h-[72px] md:min-h-[90px] p-2 text-left hover:bg-slate-50/70 transition-all cursor-pointer flex flex-col justify-between group relative focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-teal-600 ${
                     cell.isToday ? 'ring-2 ring-teal-500/25 bg-teal-50/10' : ''
                   }`}
                 >
@@ -760,7 +830,7 @@ export default function FinancialCharts({
                       )}
                     </div>
                   </div>
-                </div>
+                </button>
               );
             })}
           </div>
@@ -775,6 +845,10 @@ export default function FinancialCharts({
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="day-modal-title"
+              aria-describedby="day-modal-description"
               className="bg-white rounded-2xl max-w-4xl w-full p-6 shadow-xl border border-slate-100 space-y-5 max-h-[90vh] overflow-y-auto"
               id="day_modal_box"
             >
@@ -783,14 +857,16 @@ export default function FinancialCharts({
                 <div className="flex items-center gap-2">
                   <Calendar className="w-5 h-5 text-teal-600" />
                   <div>
-                    <h3 className="font-display font-bold text-slate-800 text-lg">
+                    <h3 id="day-modal-title" className="font-display font-bold text-slate-800 text-lg">
                       Movimentações de {selectedDay} de {currentMonthName.toLowerCase()}
                     </h3>
-                    <p className="text-xs text-slate-400">Lançamentos e observações rápidos para esta data específica.</p>
+                    <p id="day-modal-description" className="text-xs text-slate-400">Lançamentos e observações rápidos para esta data específica.</p>
                   </div>
                 </div>
                 <button
+                  type="button"
                   onClick={() => setSelectedDay(null)}
+                  aria-label="Fechar detalhes do dia"
                   className="text-slate-400 hover:text-slate-600 p-1 bg-slate-50 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
                 >
                   <X className="w-5 h-5" />
@@ -982,6 +1058,8 @@ export default function FinancialCharts({
                           <input
                             type="number"
                             step="0.01"
+                            min="0.01"
+                            max={MAX_MONEY_VALUE}
                             value={valueInput}
                             onChange={(e) => setValueInput(e.target.value)}
                             placeholder="0,00"

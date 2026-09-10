@@ -11,6 +11,8 @@ interface VariableExpensesTabProps {
   customCategories: CustomCategory[];
   onAddCustomCategory: (name: string, note?: string) => void;
   onDeleteCustomCategory: (id: string) => void;
+  currentMonthName: string;
+  currentYear: number;
 }
 
 const CATEGORIES = [
@@ -24,6 +26,45 @@ const CATEGORIES = [
   'Outros'
 ];
 
+const MAX_MONEY_VALUE = 999_999_999.99;
+const MONTH_INDEX_BY_NAME: Record<string, number> = {
+  JANEIRO: 0,
+  FEVEREIRO: 1,
+  MARCO: 2,
+  ABRIL: 3,
+  MAIO: 4,
+  JUNHO: 5,
+  JULHO: 6,
+  AGOSTO: 7,
+  SETEMBRO: 8,
+  OUTUBRO: 9,
+  NOVEMBRO: 10,
+  DEZEMBRO: 11
+};
+
+const getCompetenceDates = (monthName: string, year: number) => {
+  const normalizedMonth = monthName
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase();
+  const monthIndex = MONTH_INDEX_BY_NAME[normalizedMonth] ?? 0;
+  const safeYear = Number.isInteger(year) && year >= 1900 && year <= 9999
+    ? year
+    : new Date().getFullYear();
+  const month = String(monthIndex + 1).padStart(2, '0');
+  const lastDay = String(new Date(safeYear, monthIndex + 1, 0).getDate()).padStart(2, '0');
+  const minDate = `${safeYear}-${month}-01`;
+  const maxDate = `${safeYear}-${month}-${lastDay}`;
+  const today = new Date();
+  const todayDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+
+  return {
+    minDate,
+    maxDate,
+    defaultDate: todayDate >= minDate && todayDate <= maxDate ? todayDate : minDate
+  };
+};
+
 export default function VariableExpensesTab({
   variableExpenses,
   onAddVariableExpense,
@@ -31,19 +72,16 @@ export default function VariableExpensesTab({
   onToggleVariableExpensePaid,
   customCategories,
   onAddCustomCategory,
-  onDeleteCustomCategory
+  onDeleteCustomCategory,
+  currentMonthName,
+  currentYear
 }: VariableExpensesTabProps) {
+  const { minDate, maxDate, defaultDate } = getCompetenceDates(currentMonthName, currentYear);
   const [description, setDescription] = React.useState('');
   const [category, setCategory] = React.useState(CATEGORIES[0]);
   const [value, setValue] = React.useState('');
   const [isPaid, setIsPaid] = React.useState(true); // default to true (Pago)
-  const [date, setDate] = React.useState(() => {
-    const today = new Date();
-    const yyyy = today.getFullYear();
-    const mm = String(today.getMonth() + 1).padStart(2, '0');
-    const dd = String(today.getDate()).padStart(2, '0');
-    return `${yyyy}-${mm}-${dd}`;
-  });
+  const [date, setDate] = React.useState(defaultDate);
 
   const [searchTerm, setSearchTerm] = React.useState('');
   const [selectedCategoryFilter, setSelectedCategoryFilter] = React.useState('Todas');
@@ -53,6 +91,12 @@ export default function VariableExpensesTab({
   const [newCatName, setNewCatName] = React.useState('');
   const [newCatNote, setNewCatNote] = React.useState('');
   const [catValidationError, setCatValidationError] = React.useState('');
+
+  React.useEffect(() => {
+    setDate((currentDate) => (
+      currentDate >= minDate && currentDate <= maxDate ? currentDate : defaultDate
+    ));
+  }, [defaultDate, maxDate, minDate]);
 
   const allCategories = React.useMemo(() => {
     return [...CATEGORIES, ...customCategories.map(c => c.name)];
@@ -64,17 +108,17 @@ export default function VariableExpensesTab({
       setValidationError('Por favor, informe uma descrição.');
       return;
     }
-    const val = parseFloat(value);
-    if (isNaN(val) || val <= 0) {
-      setValidationError('Por favor, informe um valor maior que zero.');
+    const val = Number(value);
+    if (!Number.isFinite(val) || val <= 0 || val > MAX_MONEY_VALUE) {
+      setValidationError('Informe um valor entre R$ 0,01 e R$ 999.999.999,99.');
       return;
     }
-    if (!date) {
-      setValidationError('Por favor, escolha uma data.');
+    if (!date || date < minDate || date > maxDate) {
+      setValidationError(`Selecione uma data entre ${minDate} e ${maxDate}.`);
       return;
     }
 
-    onAddVariableExpense(description, category, val, date, isPaid);
+    onAddVariableExpense(description, category, Math.round(val * 100) / 100, date, isPaid);
     setDescription('');
     setValue('');
     setValidationError('');
@@ -142,17 +186,17 @@ export default function VariableExpensesTab({
       <div className="bg-gradient-to-br from-pink-500 to-rose-600 rounded-2xl p-6 text-white shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-6" id="variable_expenses_banner">
         <div>
           <span className="text-pink-100/90 text-xs font-bold uppercase tracking-widest block mb-1">Gastos Variáveis do Dia a Dia</span>
-          <h2 className="font-display text-3xl font-bold">
+          <h2 className="privacy-value font-display text-3xl font-bold">
             R$ {totalAll.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
           </h2>
           <div className="text-pink-100 text-xs mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1">
             <span className="flex items-center gap-1">
               <CheckCircle className="w-3.5 h-3.5 bg-emerald-500/30 p-0.5 rounded-full" />
-              Pago: <strong>R$ {totalPaid.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</strong>
+              Pago: <strong className="privacy-value">R$ {totalPaid.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</strong>
             </span>
             <span className="flex items-center gap-1">
               <Clock className="w-3.5 h-3.5 bg-amber-500/30 p-0.5 rounded-full" />
-              Pendente: <strong>R$ {totalUnpaid.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</strong>
+              Pendente: <strong className="privacy-value">R$ {totalUnpaid.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</strong>
             </span>
           </div>
         </div>
@@ -349,6 +393,8 @@ export default function VariableExpensesTab({
                     <input
                       type="number"
                       step="0.01"
+                      min="0.01"
+                      max={MAX_MONEY_VALUE}
                       required
                       placeholder="0,00"
                       value={value}
@@ -365,6 +411,8 @@ export default function VariableExpensesTab({
                   <input
                     type="date"
                     required
+                    min={minDate}
+                    max={maxDate}
                     value={date}
                     onChange={(e) => setDate(e.target.value)}
                     className="w-full bg-slate-50 border border-slate-200 focus:border-rose-500 focus:ring-1 focus:ring-rose-500 rounded-lg text-xs py-2 px-3 font-semibold outline-none text-slate-700 font-mono cursor-pointer"

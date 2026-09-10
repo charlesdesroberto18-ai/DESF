@@ -1,6 +1,5 @@
 import { initializeApp } from 'firebase/app';
-import { getFirestore, doc, collection, getDocs, setDoc, deleteDoc, writeBatch, getDocFromServer } from 'firebase/firestore';
-import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, User } from 'firebase/auth';
+import { getFirestore, doc, collection, getDocs, setDoc, deleteDoc, writeBatch, query, limit } from 'firebase/firestore';
 import firebaseConfigJson from '../../firebase-applet-config.json';
 import { MonthlyBudget } from '../types';
 
@@ -14,66 +13,13 @@ const firebaseConfig = {
   messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || firebaseConfigJson.messagingSenderId,
   measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || firebaseConfigJson.measurementId,
 };
+const firebaseDisabled = import.meta.env.VITE_DISABLE_FIREBASE === 'true';
 
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId || undefined);
-export const auth = getAuth(app);
-
-const provider = new GoogleAuthProvider();
-provider.addScope('https://www.googleapis.com/auth/spreadsheets');
-provider.addScope('https://www.googleapis.com/auth/drive.file');
-
-let isSigningIn = false;
-let cachedAccessToken: string | null = null;
-
-export const initAuth = (
-  onAuthSuccess?: (user: User, token: string) => void,
-  onAuthFailure?: () => void
-) => {
-  return onAuthStateChanged(auth, async (user: User | null) => {
-    if (user) {
-      if (cachedAccessToken) {
-        if (onAuthSuccess) onAuthSuccess(user, cachedAccessToken);
-      } else if (!isSigningIn) {
-        cachedAccessToken = null;
-        if (onAuthFailure) onAuthFailure();
-      }
-    } else {
-      cachedAccessToken = null;
-      if (onAuthFailure) onAuthFailure();
-    }
-  });
-};
-
-export const googleSignIn = async (): Promise<{ user: User; accessToken: string } | null> => {
-  try {
-    isSigningIn = true;
-    const result = await signInWithPopup(auth, provider);
-    const credential = GoogleAuthProvider.credentialFromResult(result);
-    if (!credential?.accessToken) {
-      throw new Error('Falha ao obter o token de acesso do Google.');
-    }
-    cachedAccessToken = credential.accessToken;
-    return { user: result.user, accessToken: cachedAccessToken };
-  } catch (error) {
-    console.error('Erro no Google Sign-in:', error);
-    throw error;
-  } finally {
-    isSigningIn = false;
-  }
-};
-
-export const getAccessToken = async (): Promise<string | null> => {
-  return cachedAccessToken;
-};
-
-export const logoutGoogle = async () => {
-  await auth.signOut();
-  cachedAccessToken = null;
-};
 
 export const isFirebaseConfigured = () => {
-  return !!firebaseConfig.projectId;
+  return !firebaseDisabled && !!firebaseConfig.projectId;
 };
 
 // Error handler exactly as mandated in the firebase-integration skill:
@@ -86,52 +32,47 @@ export enum OperationType {
   WRITE = 'write',
 }
 
-interface FirestoreErrorInfo {
-  error: string;
-  operationType: OperationType;
-  path: string | null;
-  authInfo: {
-    userId?: string | null;
-    email?: string | null;
-    emailVerified?: boolean | null;
-    isAnonymous?: boolean | null;
-    tenantId?: string | null;
-    providerInfo?: {
-      providerId?: string | null;
-      email?: string | null;
-    }[];
+const getFirestoreErrorCode = (error: unknown): string => {
+  if (typeof error !== 'object' || error === null || !('code' in error)) {
+    return 'unknown';
   }
-}
 
-export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
-  const errInfo: FirestoreErrorInfo = {
-    error: error instanceof Error ? error.message : String(error),
-    authInfo: {
-      userId: auth.currentUser?.uid || null,
-      email: auth.currentUser?.email || null,
-      emailVerified: auth.currentUser?.emailVerified || null,
-      isAnonymous: auth.currentUser?.isAnonymous || null,
-      tenantId: auth.currentUser?.tenantId || null,
-      providerInfo: auth.currentUser?.providerData?.map(provider => ({
-        providerId: provider.providerId,
-        email: provider.email,
-      })) || []
-    },
-    operationType,
-    path
-  };
-  console.error('Firestore Error: ', JSON.stringify(errInfo));
-  throw new Error(JSON.stringify(errInfo));
+  const code = (error as { code?: unknown }).code;
+  return typeof code === 'string' && /^[a-z0-9/_-]+$/i.test(code) ? code : 'unknown';
+};
+
+const getSafeFirestoreMessage = (code: string): string => {
+  if (code.includes('permission-denied') || code.includes('unauthenticated')) {
+    return 'O Firebase recusou esta sincronização. Verifique as regras e permissões do projeto.';
+  }
+  if (code.includes('unavailable') || code.includes('network')) {
+    return 'A sincronização está temporariamente indisponível. Seus dados locais foram preservados.';
+  }
+  return 'Não foi possível sincronizar os dados agora. Seus dados locais foram preservados.';
+};
+
+export function handleFirestoreError(
+  error: unknown,
+  operationType: OperationType,
+  path: string | null
+): never {
+  const code = getFirestoreErrorCode(error);
+
+  // Keep diagnostics useful without logging names, e-mails, user IDs or the
+  // original server message, which may contain account or document details.
+  console.error('Firestore operation failed', { code, operationType, path });
+
+  const safeError = new Error(getSafeFirestoreMessage(code));
+  safeError.name = 'FirestoreOperationError';
+  throw safeError;
 }
 
 // Validate connection to Firestore on initialization
 export async function testConnection() {
   try {
-    await getDocFromServer(doc(db, 'test', 'connection'));
+    await getDocs(query(collection(db, 'monthly_budgets'), limit(1)));
   } catch (error) {
-    if (error instanceof Error && error.message.includes('the client is offline')) {
-      console.error("Please check your Firebase configuration.");
-    }
+    handleFirestoreError(error, OperationType.LIST, 'monthly_budgets');
   }
 }
 
@@ -146,6 +87,7 @@ export async function loadBudgetsFromFirebase(): Promise<Record<string, MonthlyB
       budgetsMap[docSnap.id] = {
         month: data.month_name,
         year: data.year,
+        updatedAt: data.updated_at,
         incomes: data.incomes || [],
         fixedExpenses: data.fixed_expenses || [],
         savingGoals: data.saving_goals || [],
@@ -158,7 +100,6 @@ export async function loadBudgetsFromFirebase(): Promise<Record<string, MonthlyB
     return budgetsMap;
   } catch (error) {
     handleFirestoreError(error, OperationType.LIST, path);
-    return null;
   }
 }
 
@@ -176,12 +117,11 @@ export async function saveBudgetToFirebase(monthKey: string, budget: MonthlyBudg
       observations: budget.observations || {},
       custom_categories: budget.customCategories || [],
       account_categories: budget.accountCategories || [],
-      updated_at: new Date().toISOString()
+      updated_at: budget.updatedAt || new Date().toISOString()
     });
     return true;
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, path);
-    return false;
   }
 }
 
@@ -193,7 +133,6 @@ export async function deleteBudgetFromFirebase(monthKey: string): Promise<boolea
     return true;
   } catch (error) {
     handleFirestoreError(error, OperationType.DELETE, path);
-    return false;
   }
 }
 
@@ -216,7 +155,7 @@ export async function bulkSaveBudgetsToFirebase(budgets: Record<string, MonthlyB
         observations: budget.observations || {},
         custom_categories: budget.customCategories || [],
         account_categories: budget.accountCategories || [],
-        updated_at: new Date().toISOString()
+        updated_at: budget.updatedAt || new Date().toISOString()
       });
     }
 
@@ -224,6 +163,5 @@ export async function bulkSaveBudgetsToFirebase(budgets: Record<string, MonthlyB
     return true;
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, 'monthly_budgets (bulk)');
-    return false;
   }
 }

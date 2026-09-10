@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Plus, DollarSign, Sparkles, Calendar, AlertCircle, Trash2, Edit3, Tag, CalendarDays, Check } from 'lucide-react';
 import { Income } from '../types';
@@ -14,6 +14,45 @@ interface IncomeTabProps {
 
 const CATEGORIES = ['Salário', 'Freelance', 'Venda', 'Extra', 'Garçom', 'Personalizada'];
 
+const MAX_MONEY_VALUE = 999_999_999.99;
+const MONTH_INDEX_BY_NAME: Record<string, number> = {
+  JANEIRO: 0,
+  FEVEREIRO: 1,
+  MARCO: 2,
+  ABRIL: 3,
+  MAIO: 4,
+  JUNHO: 5,
+  JULHO: 6,
+  AGOSTO: 7,
+  SETEMBRO: 8,
+  OUTUBRO: 9,
+  NOVEMBRO: 10,
+  DEZEMBRO: 11
+};
+
+const getCompetenceDates = (monthName: string, year: number) => {
+  const normalizedMonth = monthName
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase();
+  const monthIndex = MONTH_INDEX_BY_NAME[normalizedMonth] ?? 0;
+  const safeYear = Number.isInteger(year) && year >= 1900 && year <= 9999
+    ? year
+    : new Date().getFullYear();
+  const month = String(monthIndex + 1).padStart(2, '0');
+  const lastDay = String(new Date(safeYear, monthIndex + 1, 0).getDate()).padStart(2, '0');
+  const minDate = `${safeYear}-${month}-01`;
+  const maxDate = `${safeYear}-${month}-${lastDay}`;
+  const today = new Date();
+  const todayDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+
+  return {
+    minDate,
+    maxDate,
+    defaultDate: todayDate >= minDate && todayDate <= maxDate ? todayDate : minDate
+  };
+};
+
 export default function IncomeTab({
   incomes,
   onAddIncome,
@@ -22,19 +61,15 @@ export default function IncomeTab({
   currentYear,
   currentMonthName
 }: IncomeTabProps) {
+  const { minDate, maxDate, defaultDate } = getCompetenceDates(currentMonthName, currentYear);
+
   // Add form states
   const [activeAddFormWeek, setActiveAddFormWeek] = useState<number | null>(null);
   const [description, setDescription] = useState('');
   const [value, setValue] = useState('');
   const [category, setCategory] = useState(CATEGORIES[0]);
   const [customCategory, setCustomCategory] = useState('');
-  const [date, setDate] = useState(() => {
-    const today = new Date();
-    const yyyy = today.getFullYear();
-    const mm = String(today.getMonth() + 1).padStart(2, '0');
-    const dd = String(today.getDate()).padStart(2, '0');
-    return `${yyyy}-${mm}-${dd}`;
-  });
+  const [date, setDate] = useState(defaultDate);
   const [validationError, setValidationError] = useState('');
 
   // Editing state
@@ -45,6 +80,12 @@ export default function IncomeTab({
   const [editCustomCategory, setEditCustomCategory] = useState('');
   const [editDate, setEditDate] = useState('');
   const [editWeek, setEditWeek] = useState<1 | 2 | 3 | 4 | 5>(1);
+
+  useEffect(() => {
+    setDate((currentDate) => (
+      currentDate >= minDate && currentDate <= maxDate ? currentDate : defaultDate
+    ));
+  }, [defaultDate, maxDate, minDate]);
 
   const totalIn = incomes.reduce((sum, i) => sum + i.value, 0);
 
@@ -70,13 +111,13 @@ export default function IncomeTab({
       setValidationError('Por favor, informe uma descrição.');
       return;
     }
-    const val = parseFloat(value);
-    if (isNaN(val) || val <= 0) {
-      setValidationError('Por favor, informe um valor válido maior que zero.');
+    const val = Number(value);
+    if (!Number.isFinite(val) || val <= 0 || val > MAX_MONEY_VALUE) {
+      setValidationError('Informe um valor entre R$ 0,01 e R$ 999.999.999,99.');
       return;
     }
-    if (!date) {
-      setValidationError('Por favor, selecione uma data.');
+    if (!date || date < minDate || date > maxDate) {
+      setValidationError(`Selecione uma data entre ${minDate} e ${maxDate}.`);
       return;
     }
 
@@ -86,7 +127,7 @@ export default function IncomeTab({
       return;
     }
 
-    onAddIncome(description.trim(), val, finalCategory || 'Receita', date, weekNum as any);
+    onAddIncome(description.trim(), Math.round(val * 100) / 100, finalCategory || 'Receita', date, weekNum as any);
     
     // Clear states
     setDescription('');
@@ -117,12 +158,13 @@ export default function IncomeTab({
   const handleEditSubmit = (e: React.FormEvent, id: string) => {
     e.preventDefault();
     if (!editDescription.trim()) return;
-    const val = parseFloat(editValue);
-    if (isNaN(val) || val <= 0) return;
+    const val = Number(editValue);
+    if (!Number.isFinite(val) || val <= 0 || val > MAX_MONEY_VALUE) return;
+    if (!editDate || editDate < minDate || editDate > maxDate) return;
 
     const finalCategory = editCategory === 'Personalizada' ? editCustomCategory.trim() : editCategory;
     
-    onUpdateIncome(id, editDescription.trim(), val, finalCategory || 'Receita', editDate, editWeek);
+    onUpdateIncome(id, editDescription.trim(), Math.round(val * 100) / 100, finalCategory || 'Receita', editDate, editWeek);
     setEditingId(null);
   };
 
@@ -144,7 +186,7 @@ export default function IncomeTab({
       <div className="bg-gradient-to-br from-emerald-500 to-teal-600 rounded-2xl p-6 text-white shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-6" id="income_overview_banner">
         <div>
           <span className="text-emerald-100/90 text-xs font-bold uppercase tracking-widest block mb-1">Total de Entradas ({currentMonthName})</span>
-          <h2 className="font-display text-3xl font-bold">
+          <h2 className="privacy-value font-display text-3xl font-bold">
             R$ {totalIn.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </h2>
           <p className="text-emerald-100 text-xs mt-1.5 flex items-center gap-1.5">
@@ -201,12 +243,7 @@ export default function IncomeTab({
                         } else {
                           setActiveAddFormWeek(weekNum);
                           setValidationError('');
-                          // Set default date based on month context
-                          const dummyDate = new Date();
-                          const yyyy = dummyDate.getFullYear();
-                          const mm = String(dummyDate.getMonth() + 1).padStart(2, '0');
-                          const dd = String(dummyDate.getDate()).padStart(2, '0');
-                          setDate(`${yyyy}-${mm}-${dd}`);
+                          setDate(defaultDate);
                         }
                       }}
                       className="bg-slate-100 hover:bg-emerald-50 hover:text-emerald-600 p-1.5 rounded-lg text-slate-500 transition-colors cursor-pointer"
@@ -250,6 +287,8 @@ export default function IncomeTab({
                             <input
                               type="number"
                               step="0.01"
+                              min="0.01"
+                              max={MAX_MONEY_VALUE}
                               required
                               placeholder="0,00"
                               value={value}
@@ -293,6 +332,8 @@ export default function IncomeTab({
                           <input
                             type="date"
                             required
+                            min={minDate}
+                            max={maxDate}
                             value={date}
                             onChange={(e) => setDate(e.target.value)}
                             className="w-full bg-white border border-slate-200 focus:border-emerald-500 rounded-lg text-xs py-1.5 px-3 font-semibold outline-none text-slate-700 font-mono cursor-pointer"
@@ -358,6 +399,8 @@ export default function IncomeTab({
                                   <input
                                     type="number"
                                     step="0.01"
+                                    min="0.01"
+                                    max={MAX_MONEY_VALUE}
                                     required
                                     value={editValue}
                                     onChange={(e) => setEditValue(e.target.value)}
@@ -369,6 +412,8 @@ export default function IncomeTab({
                                 <input
                                   type="date"
                                   required
+                                  min={minDate}
+                                  max={maxDate}
                                   value={editDate}
                                   onChange={(e) => setEditDate(e.target.value)}
                                   className="w-full bg-white border border-slate-200 rounded-md text-xs py-1 px-2 font-semibold text-slate-700 outline-none focus:border-teal-500 font-mono"
